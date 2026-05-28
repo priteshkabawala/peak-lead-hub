@@ -26,3 +26,36 @@ export type Lead = {
 }
 
 export type NewLead = Omit<Lead, 'id' | 'created_at' | 'score'>
+
+export type Profile = {
+  id: string
+  email: string
+  name: string
+  role: 'admin' | 'caller'
+  active: boolean
+  created_at: string
+}
+
+export type AuditLog = {
+  id: number
+  created_at: string
+  user_id: string | null
+  user_name: string
+  user_role: string
+  action: string
+  entity_type: string | null
+  entity_id: string | null
+  details: Record<string, unknown> | null
+}
+
+export async function logAudit(params: {
+  user_id: string
+  user_name: string
+  user_role: string
+  action: string
+  entity_type?: string
+  entity_id?: string
+  details?: Record<string, unknown>
+}) {
+  await supabase.from('audit_logs').insert([params])
+}

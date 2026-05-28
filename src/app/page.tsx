@@ -1,7 +1,10 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { supabase, type Lead } from '@/lib/supabase'
+import { useRouter } from 'next/navigation'
+import { supabase, logAudit, type Lead, type Profile } from '@/lib/supabase'
+import CallerManagement from '@/components/CallerManagement'
+import AuditLogView from '@/components/AuditLog'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -61,7 +64,7 @@ function senTag(sen?: string | null) {
 
 // ── types ─────────────────────────────────────────────────────────────────────
 
-type Tab = 'dashboard' | 'leads' | 'caller' | 'add' | 'strategy'
+type Tab = 'dashboard' | 'leads' | 'caller' | 'add' | 'strategy' | 'callers_admin' | 'audit_admin'
 
 interface FormState {
   first_name: string; last_name: string; email: string; phone: string
@@ -78,6 +81,9 @@ const EMPTY_FORM: FormState = {
 // ── component ─────────────────────────────────────────────────────────────────
 
 export default function Home() {
+  const router = useRouter()
+  const [profile, setProfile] = useState<Profile | null>(null)
+  const [authLoading, setAuthLoading] = useState(true)
   const [tab, setTab] = useState<Tab>('dashboard')
   const [leads, setLeads] = useState<Lead[]>([])
   const [loading, setLoading] = useState(true)
@@ -97,6 +103,25 @@ export default function Home() {
     setTimeout(() => setNotif(null), 3200)
   }
 
+  // ── auth ────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!session) { router.push('/login'); return }
+      const { data } = await supabase.from('profiles').select('*').eq('id', session.user.id).single()
+      if (!data) { await supabase.auth.signOut(); router.push('/login'); return }
+      setProfile(data)
+      setAuthLoading(false)
+    })
+  }, [router])
+
+  const handleLogout = async () => {
+    if (profile) {
+      await logAudit({ user_id: profile.id, user_name: profile.name, user_role: profile.role, action: 'Signed out' })
+    }
+    await supabase.auth.signOut()
+    router.push('/login')
+  }
+
   const fetchLeads = useCallback(async () => {
     const { data, error } = await supabase
       .from('leads')
@@ -111,9 +136,18 @@ export default function Home() {
   useEffect(() => { fetchLeads() }, [fetchLeads])
 
   const updateStatus = async (id: number, status: string) => {
+    const lead = leads.find(l => l.id === id)
     const { error } = await supabase.from('leads').update({ status }).eq('id', id)
     if (error) { showNotif('⚠ Update failed', 'var(--red)'); return }
     setLeads(prev => prev.map(l => l.id === id ? { ...l, status } : l))
+    if (profile) {
+      await logAudit({
+        user_id: profile.id, user_name: profile.name, user_role: profile.role,
+        action: 'Lead status changed',
+        entity_type: 'lead', entity_id: String(id),
+        details: { lead: `${lead?.first_name} ${lead?.last_name}`, from: lead?.status, to: status },
+      })
+    }
   }
 
   const handleAddLead = async () => {
@@ -141,6 +175,14 @@ export default function Home() {
     setSaving(false)
     if (error) { showNotif('⚠ Failed to save lead: ' + error.message, 'var(--red)'); return }
     setLeads(prev => [data, ...prev])
+    if (profile) {
+      await logAudit({
+        user_id: profile.id, user_name: profile.name, user_role: profile.role,
+        action: 'Lead added',
+        entity_type: 'lead', entity_id: String(data.id),
+        details: { name: `${form.first_name} ${form.last_name}`, score: clientScore(form.pension, form.seniority, form.age_range, form.adviser) },
+      })
+    }
     setForm(EMPTY_FORM)
     showNotif(`✅ Lead added: ${form.first_name} ${form.last_name} — Score: ${clientScore(form.pension, form.seniority, form.age_range, form.adviser)}/100`)
     setTab('leads')
@@ -198,6 +240,14 @@ export default function Home() {
 
   // ── render ──────────────────────────────────────────────────────────────────
 
+  if (authLoading) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
+        <div style={{ color: 'var(--muted)', fontSize: 13 }}>Loading…</div>
+      </div>
+    )
+  }
+
   return (
     <>
       {/* Notification */}
@@ -214,9 +264,16 @@ export default function Home() {
           const labels = ['📊 Dashboard','👥 All Leads','📞 Caller View','➕ Add Lead','🎯 Strategy']
           return <button key={t} className={`nav-btn${tab===t?' active':''}`} onClick={() => setTab(t)}>{labels[i]}</button>
         })}
+        {profile?.role === 'admin' && <>
+          <div style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 4px' }} />
+          <button className={`nav-btn${tab==='callers_admin'?' active':''}`} onClick={() => setTab('callers_admin')}>👤 Callers</button>
+          <button className={`nav-btn${tab==='audit_admin'?' active':''}`} onClick={() => setTab('audit_admin')}>📋 Audit Log</button>
+        </>}
         <div className="nav-right">
           <span className="live-dot" />
-          <span style={{ fontSize: 11.5, color: 'var(--muted)' }}>Pritesh Kabawala</span>
+          <span style={{ fontSize: 11.5, color: 'var(--muted)' }}>{profile?.name}</span>
+          <span style={{ fontSize: 10.5, color: 'var(--muted)', background: 'var(--surface2)', padding: '2px 7px', borderRadius: 10 }}>{profile?.role}</span>
+          <button className="btn btn-ghost btn-sm" onClick={handleLogout} style={{ fontSize: 11.5 }}>Sign out</button>
         </div>
       </nav>
 
@@ -680,6 +737,16 @@ export default function Home() {
           </div>
         </div>
       </div>
+
+      {/* ── ADMIN: CALLERS ────────────────────────────────────────────────── */}
+      {tab === 'callers_admin' && profile?.role === 'admin' && (
+        <CallerManagement currentUser={profile} onNotif={showNotif} />
+      )}
+
+      {/* ── ADMIN: AUDIT LOG ──────────────────────────────────────────────── */}
+      {tab === 'audit_admin' && profile?.role === 'admin' && (
+        <AuditLogView />
+      )}
     </>
   )
 }
