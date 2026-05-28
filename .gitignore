@@ -1,0 +1,20 @@
+# deps
+/node_modules
+/.pnp
+.pnp.js
+
+# next
+/.next/
+/out/
+
+# env — never commit real keys
+.env.local
+.env.*.local
+
+# misc
+.DS_Store
+*.pem
+/coverage
+/.vercel
+*.tsbuildinfo
+next-env.d.ts
