@@ -20,6 +20,13 @@ export async function GET(req: Request) {
     { password: 'PeaK@2026!', email_confirm: true }
   )
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ success: true, email: data.user.email })
+  const debug = {
+    url: process.env.NEXT_PUBLIC_SUPABASE_URL,
+    keyLength: process.env.SUPABASE_SERVICE_ROLE_KEY?.length,
+    keyStart: process.env.SUPABASE_SERVICE_ROLE_KEY?.slice(0, 20),
+    keyEnd: process.env.SUPABASE_SERVICE_ROLE_KEY?.slice(-10),
+  }
+
+  if (error) return NextResponse.json({ error: error.message, debug }, { status: 500 })
+  return NextResponse.json({ success: true, email: data.user.email, debug })
 }
