@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase, logAudit, type Lead, type Profile } from '@/lib/supabase'
+import { supabase, logAudit, type Lead, type Profile, type LeadPrivate } from '@/lib/supabase'
 import CallerManagement from '@/components/CallerManagement'
+import CallerWorkspace from '@/components/CallerWorkspace'
 import AuditLogView from '@/components/AuditLog'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -70,12 +71,14 @@ interface FormState {
   first_name: string; last_name: string; email: string; phone: string
   campaign: string; job_title: string; seniority: string; age_range: string
   pension: string; adviser: string; notes: string
+  linkedin_url: string; init_fee_est: string
 }
 
 const EMPTY_FORM: FormState = {
   first_name: '', last_name: '', email: '', phone: '',
   campaign: '', job_title: '', seniority: '', age_range: '',
   pension: '', adviser: '', notes: '',
+  linkedin_url: '', init_fee_est: '',
 }
 
 // ── component ─────────────────────────────────────────────────────────────────
@@ -96,7 +99,12 @@ export default function Home() {
   const [fqual, setFqual] = useState('')
   const [fcamp, setFcamp] = useState('')
   const [fstat, setFstat] = useState('')
-  const [callerF, setCallerF] = useState('all')
+  // admin-only private fields (LinkedIn URL, editable init fee), keyed by lead id
+  const [privateMap, setPrivateMap] = useState<Record<number, LeadPrivate>>({})
+  const [editLead, setEditLead] = useState<Lead | null>(null)
+  const [editLinkedin, setEditLinkedin] = useState('')
+  const [editFee, setEditFee] = useState('')
+  const [savingPrivate, setSavingPrivate] = useState(false)
 
   const showNotif = (msg: string, color = 'var(--green)') => {
     setNotif({ msg, color })
@@ -134,6 +142,19 @@ export default function Home() {
   }, [])
 
   useEffect(() => { fetchLeads() }, [fetchLeads])
+
+  // Admin-only: load the private fields (LinkedIn URL + editable fee).
+  // RLS guarantees callers get nothing back even if this ran for them.
+  const fetchPrivate = useCallback(async () => {
+    const { data } = await supabase.from('lead_private').select('*')
+    if (data) {
+      const m: Record<number, LeadPrivate> = {}
+      for (const row of data as LeadPrivate[]) m[row.lead_id] = row
+      setPrivateMap(m)
+    }
+  }, [])
+
+  useEffect(() => { if (profile?.role === 'admin') fetchPrivate() }, [profile, fetchPrivate])
 
   const updateStatus = async (id: number, status: string) => {
     const lead = leads.find(l => l.id === id)
@@ -175,6 +196,17 @@ export default function Home() {
     setSaving(false)
     if (error) { showNotif('⚠ Failed to save lead: ' + error.message, 'var(--red)'); return }
     setLeads(prev => [data, ...prev])
+
+    // Store admin-only private fields if provided
+    if (form.linkedin_url.trim() || form.init_fee_est.trim()) {
+      const priv = {
+        lead_id: data.id,
+        linkedin_url: form.linkedin_url.trim() || null,
+        init_fee_est: form.init_fee_est.trim() ? Number(form.init_fee_est) : null,
+      }
+      const { data: pr } = await supabase.from('lead_private').upsert(priv).select().single()
+      if (pr) setPrivateMap(prev => ({ ...prev, [data.id]: pr as LeadPrivate }))
+    }
     if (profile) {
       await logAudit({
         user_id: profile.id, user_name: profile.name, user_role: profile.role,
@@ -223,12 +255,35 @@ export default function Home() {
     return true
   })
 
-  const callerLeads = leads.filter(l => {
-    if (['Meeting Booked', 'Cold', 'Invalid Phone'].includes(l.status)) return false
-    if (callerF === 'priority' && l.score < 70) return false
-    if (callerF === 'new' && l.status !== 'New') return false
-    return true
-  })
+  const openEditPrivate = (lead: Lead) => {
+    const p = privateMap[lead.id]
+    setEditLead(lead)
+    setEditLinkedin(p?.linkedin_url ?? '')
+    setEditFee(p?.init_fee_est != null ? String(p.init_fee_est) : '')
+  }
+
+  const savePrivate = async () => {
+    if (!editLead) return
+    setSavingPrivate(true)
+    const priv = {
+      lead_id: editLead.id,
+      linkedin_url: editLinkedin.trim() || null,
+      init_fee_est: editFee.trim() ? Number(editFee) : null,
+    }
+    const { data, error } = await supabase.from('lead_private').upsert(priv).select().single()
+    setSavingPrivate(false)
+    if (error) { showNotif('⚠ Could not save: ' + error.message, 'var(--red)'); return }
+    setPrivateMap(prev => ({ ...prev, [editLead.id]: data as LeadPrivate }))
+    if (profile) {
+      await logAudit({
+        user_id: profile.id, user_name: profile.name, user_role: profile.role,
+        action: 'Lead private details updated', entity_type: 'lead', entity_id: String(editLead.id),
+        details: { lead: `${editLead.first_name} ${editLead.last_name}` },
+      })
+    }
+    showNotif('✅ Saved')
+    setEditLead(null)
+  }
 
   const qualityLeads = leads.filter(l => l.score >= 70)
   const bookedLeads  = leads.filter(l => l.status === 'Meeting Booked')
@@ -245,6 +300,25 @@ export default function Home() {
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
         <div style={{ color: 'var(--muted)', fontSize: 13 }}>Loading…</div>
       </div>
+    )
+  }
+
+  // ── CALLER: dedicated calling workspace only (no dashboard / financials) ──
+  if (profile?.role === 'caller') {
+    return (
+      <>
+        {notif && <div className="notif" style={{ background: notif.color, opacity: 1 }}>{notif.msg}</div>}
+        <nav className="nav">
+          <div className="brand">PeaK <span>Lead Hub</span> <em>Peak Personal Finance</em></div>
+          <div className="nav-right">
+            <span className="live-dot" />
+            <span style={{ fontSize: 11.5, color: 'var(--muted)' }}>{profile.name}</span>
+            <span className="role-badge">{profile.role}</span>
+            <button className="btn btn-ghost btn-sm" onClick={handleLogout} style={{ fontSize: 11.5 }}>Sign out</button>
+          </div>
+        </nav>
+        <CallerWorkspace currentUser={profile} onNotif={showNotif} />
+      </>
     )
   }
 
@@ -421,10 +495,10 @@ export default function Home() {
         <div className="card" style={{padding:0}}>
           <div className="tbl-wrap">
             <table>
-              <thead><tr><th>Date</th><th>Name</th><th>Score</th><th>Phone</th><th>Campaign</th><th>Pension</th><th>Job Title</th><th>Adviser?</th><th>Status</th><th>Est. Init.</th></tr></thead>
+              <thead><tr><th>Date</th><th>Name</th><th>Score</th><th>Phone</th><th>Campaign</th><th>Pension</th><th>Job Title</th><th>Status</th><th>Est. Init. 🔒</th><th>LinkedIn 🔒</th><th></th></tr></thead>
               <tbody>
-                {loading ? <tr><td colSpan={10} className="empty">Loading...</td></tr>
-                : filtered.length === 0 ? <tr><td colSpan={10} className="empty">No leads found. Try adjusting filters.</td></tr>
+                {loading ? <tr><td colSpan={11} className="empty">Loading...</td></tr>
+                : filtered.length === 0 ? <tr><td colSpan={11} className="empty">No leads found. Try adjusting filters.</td></tr>
                 : filtered.map(l => {
                   const t = ticket(l.pension)
                   return (
@@ -436,13 +510,16 @@ export default function Home() {
                       <td><span className="ctag" style={{fontSize:10}}>{shortCamp(l.campaign)}</span></td>
                       <td style={{fontSize:12}}>{PEN_LABEL[l.pension??'']??'—'}</td>
                       <td style={{fontSize:12,maxWidth:170,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{l.job_title??'—'}</td>
-                      <td style={{fontSize:12,color:l.adviser==='No'?'var(--green)':l.adviser==='Yes'?'var(--red)':'var(--amber)'}}>{l.adviser??'—'}</td>
                       <td>
                         <select className="ssel" value={l.status} onChange={e=>updateStatus(l.id,e.target.value)}>
                           {['New','Contacted','Qualified','Meeting Booked','Cold','Invalid Phone'].map(s=><option key={s}>{s}</option>)}
                         </select>
                       </td>
-                      <td style={{color:'var(--gold)',fontSize:12.5,fontWeight:500}}>{t?fmt(t.initial):'—'}</td>
+                      <td style={{color:'var(--gold)',fontSize:12.5,fontWeight:600}}>
+                        {(() => { const ov = privateMap[l.id]?.init_fee_est; if (ov != null) return <span title="Manual override">{fmt(ov)} <span style={{color:'var(--muted)',fontSize:10}}>✎</span></span>; return t ? <span style={{fontWeight:400,color:'var(--muted)'}}>{fmt(t.initial)}</span> : '—' })()}
+                      </td>
+                      <td>{privateMap[l.id]?.linkedin_url ? <a href={privateMap[l.id].linkedin_url!} target="_blank" rel="noopener noreferrer" style={{color:'var(--accent)',fontSize:12,fontWeight:600,textDecoration:'none'}}>🔗 View</a> : <span style={{color:'var(--muted)'}}>—</span>}</td>
+                      <td><button className="btn btn-ghost btn-sm" onClick={()=>openEditPrivate(l)}>✎ Edit</button></td>
                     </tr>
                   )
                 })}
@@ -452,58 +529,8 @@ export default function Home() {
         </div>
       </div>
 
-      {/* ── CALLER VIEW ───────────────────────────────────────────────────── */}
-      <div className={`page${tab==='caller'?' active':''}`}>
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
-          <div>
-            <div style={{fontSize:20,fontWeight:700}}>📞 Caller Dashboard</div>
-            <div style={{fontSize:13,color:'var(--muted)',marginTop:3}}>Essential info only — highest score first. Call in order.</div>
-          </div>
-          <select className="ssel" style={{padding:'7px 10px',fontSize:12.5}} value={callerF} onChange={e=>setCallerF(e.target.value)}>
-            <option value="all">All Leads to Call</option>
-            <option value="priority">Priority Only (70+)</option>
-            <option value="new">New Leads Only</option>
-          </select>
-        </div>
-        <div className="caller-grid">
-          {loading ? <div className="empty">Loading...</div>
-          : callerLeads.length === 0 ? <div className="empty" style={{gridColumn:'1/-1'}}>No leads to call right now. 🎉</div>
-          : callerLeads.map(l => {
-            const sc = l.score
-            const hi = sc >= 70
-            const t = ticket(l.pension)
-            const senIcon: Record<string,string> = {'CEO/MD':'👑','VP':'⭐','Director':'💼','Manager':'📋','Other':'👤'}
-            return (
-              <div key={l.id} className={`caller-card${hi?' priority':''}`}>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10}}>
-                  <div>
-                    <div className="c-name">{l.first_name} {l.last_name}</div>
-                    <div className="c-title">{senIcon[l.seniority??'']??'👤'} {l.job_title ?? l.seniority ?? '—'}</div>
-                  </div>
-                  <span className={scClass(sc)}>{sc}</span>
-                </div>
-                <div className="c-phone" style={{color:l.phone_valid?'var(--gold)':'var(--red)'}}>
-                  📞 {l.phone}
-                  <span style={{fontSize:11,fontWeight:400,marginLeft:5,color:l.phone_valid?'var(--green)':'var(--red)'}}>{l.phone_valid?'✓ valid':'⚠ check'}</span>
-                </div>
-                <div className="c-info">
-                  <div className="c-info-item"><div className="c-info-lbl">Pension Pot</div><div className="c-info-val" style={{color:'var(--green)'}}>{PEN_LABEL[l.pension??'']??'—'}</div></div>
-                  <div className="c-info-item"><div className="c-info-lbl">Init. Fee Est.</div><div className="c-info-val" style={{color:'var(--gold)'}}>{t?fmt(t.initial):'—'}</div></div>
-                  <div className="c-info-item"><div className="c-info-lbl">Age Range</div><div className="c-info-val">{l.age_range??'—'}</div></div>
-                  <div className="c-info-item"><div className="c-info-lbl">Had Adviser?</div><div className="c-info-val" style={{color:l.adviser==='No'?'var(--green)':l.adviser==='Yes'?'var(--red)':'var(--amber)'}}>{l.adviser??'—'}</div></div>
-                </div>
-                <div style={{marginBottom:10}}><span className="ctag">{shortCamp(l.campaign)}</span></div>
-                <div className="c-actions">
-                  <button className="btn btn-green btn-sm" onClick={()=>updateStatus(l.id,'Contacted')}>✓ Connected</button>
-                  <button className="btn btn-amber btn-sm" onClick={()=>updateStatus(l.id,'Contacted')}>📵 No Answer</button>
-                  <button className="btn btn-primary btn-sm" onClick={()=>{updateStatus(l.id,'Meeting Booked');showNotif(`🎉 Meeting booked — ${l.first_name} ${l.last_name}!`)}}>📅 Book</button>
-                  <button className="btn btn-red btn-sm" onClick={()=>updateStatus(l.id,'Invalid Phone')}>⚠ Bad #</button>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </div>
+      {/* ── CALLER WORKSPACE (admins can call too) ──────────────────────────── */}
+      {tab === 'caller' && profile && <CallerWorkspace currentUser={profile} onNotif={showNotif} />}
 
       {/* ── ADD LEAD ──────────────────────────────────────────────────────── */}
       <div className={`page${tab==='add'?' active':''}`}>
@@ -577,6 +604,14 @@ export default function Home() {
                 <div className="fg full">
                   <label>Notes</label>
                   <textarea rows={3} value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} placeholder="Any additional context about this lead..." />
+                </div>
+                <div className="fg full" style={{borderTop:'1px dashed var(--border-strong)',paddingTop:14,marginTop:4}}>
+                  <label>🔒 LinkedIn Profile URL <span style={{color:'var(--muted)',fontWeight:400}}>· admin only, hidden from callers</span></label>
+                  <input value={form.linkedin_url} onChange={e=>setForm(f=>({...f,linkedin_url:e.target.value}))} placeholder="https://www.linkedin.com/in/…" />
+                </div>
+                <div className="fg full">
+                  <label>🔒 Initial Fee Estimate (£) <span style={{color:'var(--muted)',fontWeight:400}}>· admin only{form.pension && ticket(form.pension) ? ` · auto ≈ ${fmt(ticket(form.pension)!.initial)}` : ''}</span></label>
+                  <input type="number" value={form.init_fee_est} onChange={e=>setForm(f=>({...f,init_fee_est:e.target.value}))} placeholder={form.pension && ticket(form.pension) ? String(Math.round(ticket(form.pension)!.initial)) : 'e.g. 20000'} />
                 </div>
               </div>
               <div style={{marginTop:18,display:'flex',gap:9}}>
@@ -746,6 +781,30 @@ export default function Home() {
       {/* ── ADMIN: AUDIT LOG ──────────────────────────────────────────────── */}
       {tab === 'audit_admin' && profile?.role === 'admin' && (
         <AuditLogView />
+      )}
+
+      {/* ── ADMIN: edit private (LinkedIn + fee) ──────────────────────────── */}
+      {editLead && (
+        <div onClick={()=>setEditLead(null)} style={{position:'fixed',inset:0,background:'rgba(15,23,42,.45)',zIndex:500,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
+          <div onClick={e=>e.stopPropagation()} className="card" style={{width:440,maxWidth:'100%',marginBottom:0}}>
+            <div className="card-head"><span className="card-title">🔒 Private details — {editLead.first_name} {editLead.last_name}</span></div>
+            <div className="card-body">
+              <div style={{fontSize:12,color:'var(--muted)',marginBottom:14}}>These fields are admin-only and never visible to callers.</div>
+              <div className="fg" style={{marginBottom:14}}>
+                <label>LinkedIn Profile URL</label>
+                <input value={editLinkedin} onChange={e=>setEditLinkedin(e.target.value)} placeholder="https://www.linkedin.com/in/…" />
+              </div>
+              <div className="fg" style={{marginBottom:18}}>
+                <label>Initial Fee Estimate (£){ticket(editLead.pension) ? ` · auto ≈ ${fmt(ticket(editLead.pension)!.initial)}` : ''}</label>
+                <input type="number" value={editFee} onChange={e=>setEditFee(e.target.value)} placeholder={ticket(editLead.pension) ? String(Math.round(ticket(editLead.pension)!.initial)) : 'e.g. 20000'} />
+              </div>
+              <div style={{display:'flex',gap:9}}>
+                <button className="btn btn-primary" onClick={savePrivate} disabled={savingPrivate}>{savingPrivate?'Saving…':'Save'}</button>
+                <button className="btn btn-ghost" onClick={()=>setEditLead(null)}>Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </>
   )
