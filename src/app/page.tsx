@@ -240,6 +240,12 @@ export default function Home() {
     showNotif('✅ CSV downloaded')
   }
 
+  // Jump to the All Leads list, filtered to booked meetings only.
+  const showBooked = () => {
+    setSearch(''); setFqual(''); setFcamp(''); setFstat('Meeting Booked')
+    setTab('leads')
+  }
+
   // ── filtered leads ──────────────────────────────────────────────────────────
 
   const filtered = leads.filter(l => {
@@ -366,7 +372,14 @@ export default function Home() {
         <div className="kpi-grid">
           <div className="kpi green"><div className="kpi-lbl">Quality Leads (70+)</div><div className="kpi-val">{qualityLeads.length}</div><div className="kpi-sub">Target: 5 per day</div></div>
           <div className="kpi blue"><div className="kpi-lbl">Total Leads</div><div className="kpi-val">{leads.length}</div><div className="kpi-sub">£900/mo · ~£{leads.length?Math.round(900/leads.length):12} CPL</div></div>
-          <div className="kpi gold"><div className="kpi-lbl">Appointments Booked</div><div className="kpi-val">{bookedLeads.length}</div><div className="kpi-sub">Booking rate: {qualityLeads.length?Math.round(bookedLeads.length/qualityLeads.length*100):0}% of quality</div></div>
+          <div className="kpi gold" role="button" tabIndex={0} style={{cursor:'pointer'}}
+            onClick={showBooked}
+            onKeyDown={e=>{ if(e.key==='Enter'||e.key===' ') showBooked() }}
+            title="View all booked appointments">
+            <div className="kpi-lbl">Appointments Booked</div>
+            <div className="kpi-val">{bookedLeads.length}</div>
+            <div className="kpi-sub">Booking rate: {qualityLeads.length?Math.round(bookedLeads.length/qualityLeads.length*100):0}% of quality · <span style={{color:'var(--accent)',fontWeight:600}}>View all →</span></div>
+          </div>
           <div className="kpi red"><div className="kpi-lbl">Invalid Phones</div><div className="kpi-val">{invalidLeads.length}</div><div className="kpi-sub">Flagged for review</div></div>
           <div className="kpi purple"><div className="kpi-lbl">Est. Pipeline Value</div><div className="kpi-val">{fmt(pipelineVal)}</div><div className="kpi-sub">Initial fees · active quality leads</div></div>
         </div>
