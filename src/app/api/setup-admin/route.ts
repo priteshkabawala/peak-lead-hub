@@ -16,15 +16,8 @@ export async function GET(req: Request) {
   )
 
   const EMAIL = 'priteshkabawala@gmail.com'
-  const OLD_ID = '43b3bcbf-cd94-4654-93d7-5bb8a28834f4'
 
-  // Step 1: delete the broken manually-created user
-  await supabaseAdmin.auth.admin.deleteUser(OLD_ID)
-
-  // Also clean up the orphaned profile row (ignore errors)
-  await supabaseAdmin.from('profiles').delete().eq('id', OLD_ID)
-
-  // Step 2: create a fresh user via GoTrue so all internal state is correct
+  // Create a fresh user via GoTrue so all internal state is correct
   const { data, error } = await supabaseAdmin.auth.admin.createUser({
     email: EMAIL,
     password: 'PeaK@2026!',
