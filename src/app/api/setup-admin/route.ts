@@ -15,18 +15,35 @@ export async function GET(req: Request) {
     { auth: { autoRefreshToken: false, persistSession: false } }
   )
 
-  const { data, error } = await supabaseAdmin.auth.admin.updateUserById(
-    '43b3bcbf-cd94-4654-93d7-5bb8a28834f4',
-    { password: 'PeaK@2026!', email_confirm: true }
-  )
+  const EMAIL = 'priteshkabawala@gmail.com'
+  const OLD_ID = '43b3bcbf-cd94-4654-93d7-5bb8a28834f4'
 
-  const debug = {
-    url: process.env.NEXT_PUBLIC_SUPABASE_URL,
-    keyLength: process.env.SUPABASE_SERVICE_ROLE_KEY?.length,
-    keyStart: process.env.SUPABASE_SERVICE_ROLE_KEY?.slice(0, 20),
-    keyEnd: process.env.SUPABASE_SERVICE_ROLE_KEY?.slice(-10),
-  }
+  // Step 1: delete the broken manually-created user
+  await supabaseAdmin.auth.admin.deleteUser(OLD_ID)
 
-  if (error) return NextResponse.json({ error: error.message, debug }, { status: 500 })
-  return NextResponse.json({ success: true, email: data.user.email, debug })
+  // Also clean up the orphaned profile row (ignore errors)
+  await supabaseAdmin.from('profiles').delete().eq('id', OLD_ID)
+
+  // Step 2: create a fresh user via GoTrue so all internal state is correct
+  const { data, error } = await supabaseAdmin.auth.admin.createUser({
+    email: EMAIL,
+    password: 'PeaK@2026!',
+    email_confirm: true,
+    user_metadata: { name: 'Pritesh Kabawala' },
+  })
+
+  if (error) return NextResponse.json({ step: 'createUser', error: error.message }, { status: 500 })
+
+  // Step 3: insert admin profile
+  const { error: profileError } = await supabaseAdmin.from('profiles').insert([{
+    id: data.user.id,
+    email: EMAIL,
+    name: 'Pritesh Kabawala',
+    role: 'admin',
+    active: true,
+  }])
+
+  if (profileError) return NextResponse.json({ step: 'profile', error: profileError.message }, { status: 500 })
+
+  return NextResponse.json({ success: true, email: data.user.id })
 }
