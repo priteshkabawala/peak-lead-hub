@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase, logAudit, type Lead, type Profile, type LeadPrivate } from '@/lib/supabase'
 import CallerManagement from '@/components/CallerManagement'
@@ -114,9 +114,9 @@ export default function Home() {
   // ── auth ────────────────────────────────────────────────────────────────────
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (!session) { router.push('/login'); return }
+      if (!session) { router.push('/crm/login'); return }
       const { data } = await supabase.from('profiles').select('*').eq('id', session.user.id).single()
-      if (!data) { await supabase.auth.signOut(); router.push('/login'); return }
+      if (!data) { await supabase.auth.signOut(); router.push('/crm/login'); return }
       setProfile(data)
       setAuthLoading(false)
     })
@@ -127,7 +127,7 @@ export default function Home() {
       await logAudit({ user_id: profile.id, user_name: profile.name, user_role: profile.role, action: 'Signed out' })
     }
     await supabase.auth.signOut()
-    router.push('/login')
+    router.push('/crm/login')
   }
 
   const fetchLeads = useCallback(async () => {
@@ -155,6 +155,22 @@ export default function Home() {
   }, [])
 
   useEffect(() => { if (profile?.role === 'admin') fetchPrivate() }, [profile, fetchPrivate])
+
+  // Deep link: /crm?lead=<id> (from admin alert emails) opens that lead's details.
+  const deepLinkDone = useRef(false)
+  useEffect(() => {
+    if (deepLinkDone.current || loading || profile?.role !== 'admin') return
+    const lid = new URLSearchParams(window.location.search).get('lead')
+    if (!lid) return
+    const lead = leads.find(l => String(l.id) === lid)
+    if (!lead) return
+    deepLinkDone.current = true
+    const p = privateMap[lead.id]
+    setTab('leads')
+    setEditLead(lead)
+    setEditLinkedin(p?.linkedin_url ?? '')
+    setEditFee(p?.init_fee_est != null ? String(p.init_fee_est) : '')
+  }, [leads, loading, profile, privateMap])
 
   const updateStatus = async (id: number, status: string) => {
     const lead = leads.find(l => l.id === id)
@@ -215,8 +231,22 @@ export default function Home() {
         details: { name: `${form.first_name} ${form.last_name}`, score: clientScore(form.pension, form.seniority, form.age_range, form.adviser) },
       })
     }
+    // Run the new-lead automation (guide email + WhatsApp, phone check + alert,
+    // admin/caller notifications). Fire-and-forget so the UI stays snappy.
+    const leadName = `${form.first_name.trim()} ${form.last_name.trim()}`.trim()
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      fetch('/api/lead-automation', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session?.access_token ?? ''}`,
+        },
+        body: JSON.stringify({ leadId: data.id }),
+      }).catch(() => {})
+    })
+
     setForm(EMPTY_FORM)
-    showNotif(`✅ Lead added: ${form.first_name} ${form.last_name} — Score: ${clientScore(form.pension, form.seniority, form.age_range, form.adviser)}/100`)
+    showNotif(`✅ Lead added: ${leadName} — guide sent & team notified · Score: ${clientScore(form.pension, form.seniority, form.age_range, form.adviser)}/100`)
     setTab('leads')
   }
 
