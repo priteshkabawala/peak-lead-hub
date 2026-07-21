@@ -18,6 +18,18 @@ function validPhone(p: string) {
   return /^(07\d{9}|01\d{8,9}|02\d{9}|03\d{9}|0800\d{6,7}|\+447\d{9})$/.test(c)
 }
 
+// Normalise an incoming value to a real value or null. LeadsBridge sends
+// unmapped fields as empty strings or the literal "{{token}}" placeholder,
+// and sometimes the strings "null"/"undefined" — none should reach the CRM.
+function clean(v: unknown): string | null {
+  if (typeof v !== 'string') return null
+  const t = v.trim()
+  if (!t) return null
+  if (/^\{\{.*\}\}$/.test(t)) return null            // unmapped merge token
+  if (/^(null|undefined|n\/a|na|-)$/i.test(t)) return null
+  return t
+}
+
 function splitName(full: string): { first: string; last: string } {
   const parts = full.trim().split(/\s+/)
   if (parts.length === 1) return { first: parts[0], last: '' }
@@ -73,24 +85,29 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
-  const { first, last } = body.name
-    ? splitName(body.name)
-    : { first: (body.first_name || '').trim(), last: (body.last_name || '').trim() }
-  const phone = (body.phone || '').trim()
-  const email = (body.email || '').trim() || null
+  const cleanName = clean(body.name)
+  const { first, last } = cleanName
+    ? splitName(cleanName)
+    : { first: clean(body.first_name) ?? '', last: clean(body.last_name) ?? '' }
+  const phone = clean(body.phone) ?? ''
+  const email = clean(body.email)
+  const jobTitle = clean(body.job_title)
+  const campaign = clean(body.campaign_name)
+  const leadId = clean(body.lead_id)
 
   if (!first && !phone) {
     return NextResponse.json({ error: 'name or phone required' }, { status: 400 })
   }
 
   // Prefer the explicit flat fields; fall back to a nested custom_questions map.
-  let pension: string | null = body.pension?.trim() || null
-  let seniority: string | null = body.seniority?.trim() || null
-  let ageRange: string | null = body.age_range?.trim() || null
-  let adviser: string | null = body.adviser?.trim() || null
+  let pension = clean(body.pension)
+  let seniority = clean(body.seniority)
+  let ageRange = clean(body.age_range)
+  let adviser = clean(body.adviser)
   const extraNotes: string[] = []
 
-  for (const [label, value] of Object.entries(body.custom_questions ?? {})) {
+  for (const [label, raw] of Object.entries(body.custom_questions ?? {})) {
+    const value = clean(raw)
     if (!value) continue
     const kind = classifyCustomField(label)
     if (kind === 'pension' && !pension) pension = value
@@ -108,8 +125,8 @@ export async function POST(req: Request) {
   const supabaseAdmin = createClient(url, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } })
 
   // Dedup on LinkedIn's lead id when the bridge provides one.
-  if (body.lead_id) {
-    const { data: existing } = await supabaseAdmin.from('leads').select('id').eq('linkedin_lead_id', body.lead_id).maybeSingle()
+  if (leadId) {
+    const { data: existing } = await supabaseAdmin.from('leads').select('id').eq('linkedin_lead_id', leadId).maybeSingle()
     if (existing) return NextResponse.json({ ok: true, duplicate: true, leadId: existing.id })
   }
 
@@ -120,12 +137,12 @@ export async function POST(req: Request) {
     email,
     phone,
     phone_valid: validPhone(phone),
-    campaign: body.campaign_name || 'LinkedIn',
-    job_title: body.job_title || null,
+    campaign: campaign || 'LinkedIn',
+    job_title: jobTitle,
     seniority, age_range: ageRange, pension, adviser,
     notes: extraNotes.length ? extraNotes.join(' · ') : null,
     status: 'New',
-    linkedin_lead_id: body.lead_id || null,
+    linkedin_lead_id: leadId,
   }]).select('id').single()
 
   if (error || !inserted) {
