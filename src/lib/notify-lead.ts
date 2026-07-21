@@ -6,12 +6,23 @@ const FROM_BRAND = 'PeaK Lead Hub <noreply@mypensionadvisor.co.uk>'
 const FROM_CLIENT = 'Peak Personal Finance <noreply@mypensionadvisor.co.uk>'
 
 // Campaign → free-guide PDF (files live in /public/guides — see that README).
-const GUIDES: Record<string, { file: string; title: string }> = {
-  'Retire at 57': { file: 'retire-at-57.pdf', title: 'How to Retire at 57' },
-  'Combine Your Pension Pots': { file: 'combine-your-pensions.pdf', title: 'Combine Your Pension Pots' },
-  'Your 12-Minute Guide': { file: 'your-12-minute-guide.pdf', title: 'Your 12-Minute Pension Guide' },
-}
+// Matched by KEYWORD against the LinkedIn campaign name (not exact-match), so
+// real campaign names like "Pension Pots" or "Retire at 57 - UK" still route.
 const DEFAULT_GUIDE = { file: 'your-12-minute-guide.pdf', title: 'Your Free Pension Guide' }
+
+function guideForCampaign(campaign: string | null): { file: string; title: string } {
+  const c = (campaign || '').toLowerCase()
+  if (c.includes('retire at 57') || /\b57\b/.test(c)) {
+    return { file: 'retire-at-57.pdf', title: 'How to Retire at 57' }
+  }
+  if (c.includes('combine') || c.includes('pension pot') || c.includes('consolidat')) {
+    return { file: 'combine-your-pensions.pdf', title: 'Combining Your Pension Pots' }
+  }
+  if (c.includes('12-min') || c.includes('12 min') || (c.includes('12') && c.includes('guide'))) {
+    return { file: 'your-12-minute-guide.pdf', title: 'Your 12-Minute Pension Guide' }
+  }
+  return DEFAULT_GUIDE
+}
 
 function validUkPhone(p: string) {
   const c = (p || '').replace(/[\s\-()]/g, '')
@@ -50,7 +61,7 @@ export async function runLeadAutomation(leadId: number | string) {
 
   const fullName = `${lead.first_name ?? ''} ${lead.last_name ?? ''}`.trim() || 'New lead'
   const leadLink = `${env.appUrl}/crm?lead=${lead.id}`
-  const guide = GUIDES[lead.campaign ?? ''] ?? DEFAULT_GUIDE
+  const guide = guideForCampaign(lead.campaign)
   const summary = {
     ok: true, leadId: lead.id, guideEmailed: false, phoneValid: false,
     whatsapp: 'skipped' as string, adminAlerted: false, callersNotified: 0, adminsNotified: 0,
