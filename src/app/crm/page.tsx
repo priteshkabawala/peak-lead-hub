@@ -6,6 +6,7 @@ import { supabase, logAudit, type Lead, type Profile, type LeadPrivate } from '@
 import CallerManagement from '@/components/CallerManagement'
 import CallerWorkspace from '@/components/CallerWorkspace'
 import AuditLogView from '@/components/AuditLog'
+import LinkedInAdmin from '@/components/LinkedInAdmin'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -65,7 +66,7 @@ function senTag(sen?: string | null) {
 
 // ── types ─────────────────────────────────────────────────────────────────────
 
-type Tab = 'dashboard' | 'leads' | 'caller' | 'add' | 'strategy' | 'callers_admin' | 'audit_admin'
+type Tab = 'dashboard' | 'leads' | 'caller' | 'add' | 'strategy' | 'callers_admin' | 'audit_admin' | 'linkedin_admin'
 
 interface FormState {
   first_name: string; last_name: string; email: string; phone: string
@@ -155,6 +156,13 @@ export default function Home() {
   }, [])
 
   useEffect(() => { if (profile?.role === 'admin') fetchPrivate() }, [profile, fetchPrivate])
+
+  // Deep link: /crm?tab=linkedin_admin (from the LinkedIn OAuth callback redirect).
+  useEffect(() => {
+    if (profile?.role !== 'admin') return
+    const t = new URLSearchParams(window.location.search).get('tab')
+    if (t === 'linkedin_admin') setTab('linkedin_admin')
+  }, [profile])
 
   // Deep link: /crm?lead=<id> (from admin alert emails) opens that lead's details.
   const deepLinkDone = useRef(false)
@@ -378,6 +386,7 @@ export default function Home() {
           <div style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 4px' }} />
           <button className={`nav-btn${tab==='callers_admin'?' active':''}`} onClick={() => setTab('callers_admin')}>👤 Callers</button>
           <button className={`nav-btn${tab==='audit_admin'?' active':''}`} onClick={() => setTab('audit_admin')}>📋 Audit Log</button>
+          <button className={`nav-btn${tab==='linkedin_admin'?' active':''}`} onClick={() => setTab('linkedin_admin')}>💼 LinkedIn</button>
         </>}
         <div className="nav-right">
           <span className="live-dot" />
@@ -824,6 +833,11 @@ export default function Home() {
       {/* ── ADMIN: AUDIT LOG ──────────────────────────────────────────────── */}
       {tab === 'audit_admin' && profile?.role === 'admin' && (
         <AuditLogView />
+      )}
+
+      {/* ── ADMIN: LINKEDIN LEAD SYNC ────────────────────────────────────── */}
+      {tab === 'linkedin_admin' && profile?.role === 'admin' && (
+        <LinkedInAdmin onNotif={showNotif} />
       )}
 
       {/* ── ADMIN: edit private (LinkedIn + fee) ──────────────────────────── */}
