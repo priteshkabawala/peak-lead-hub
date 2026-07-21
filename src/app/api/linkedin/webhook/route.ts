@@ -85,30 +85,52 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
-  const cleanName = clean(body.name)
+  // Normalise every incoming key (lowercase, non-alphanumerics -> underscore)
+  // so "Job Title", "job_title", "Job-Title" all resolve the same way. The
+  // ORIGINAL key label is kept for the keyword classifier / notes.
+  const normKey = (k: string) => k.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+  const fields: Record<string, { label: string; value: string }> = {}
+  const ingest = (k: string, v: unknown) => {
+    const value = clean(v)
+    if (value) fields[normKey(k)] = { label: k, value }
+  }
+  for (const [k, v] of Object.entries(body as Record<string, unknown>)) {
+    if (k === 'custom_questions') continue
+    ingest(k, v)
+  }
+  for (const [k, v] of Object.entries(body.custom_questions ?? {})) ingest(k, v)
+
+  const take = (k: string) => fields[k]?.value ?? null
+
+  const cleanName = take('name')
   const { first, last } = cleanName
     ? splitName(cleanName)
-    : { first: clean(body.first_name) ?? '', last: clean(body.last_name) ?? '' }
-  const phone = clean(body.phone) ?? ''
-  const email = clean(body.email)
-  const jobTitle = clean(body.job_title)
-  const campaign = clean(body.campaign_name)
-  const leadId = clean(body.lead_id)
+    : { first: take('first_name') ?? '', last: take('last_name') ?? '' }
+  const phone = take('phone') ?? ''
+  const email = take('email')
+  const jobTitle = take('job_title')
+  const campaign = take('campaign_name') ?? take('campaign')
+  const leadId = take('lead_id')
 
   if (!first && !phone) {
     return NextResponse.json({ error: 'name or phone required' }, { status: 400 })
   }
 
-  // Prefer the explicit flat fields; fall back to a nested custom_questions map.
-  let pension = clean(body.pension)
-  let seniority = clean(body.seniority)
-  let ageRange = clean(body.age_range)
-  let adviser = clean(body.adviser)
+  let pension = take('pension')
+  let seniority = take('seniority')
+  let ageRange = take('age_range')
+  let adviser = take('adviser')
   const extraNotes: string[] = []
 
-  for (const [label, raw] of Object.entries(body.custom_questions ?? {})) {
-    const value = clean(raw)
-    if (!value) continue
+  // Every remaining field (e.g. a LeadsBridge field named "Your Pension
+  // Question Tag") is classified by keyword, so custom questions land in the
+  // right column no matter what the bridge fields were named.
+  const KNOWN = new Set([
+    'name', 'first_name', 'last_name', 'email', 'phone', 'job_title',
+    'campaign_name', 'campaign', 'lead_id', 'pension', 'seniority', 'age_range', 'adviser',
+  ])
+  for (const [nk, { label, value }] of Object.entries(fields)) {
+    if (KNOWN.has(nk)) continue
     const kind = classifyCustomField(label)
     if (kind === 'pension' && !pension) pension = value
     else if (kind === 'seniority' && !seniority) seniority = value
