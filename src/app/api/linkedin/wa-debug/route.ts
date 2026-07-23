@@ -53,5 +53,23 @@ export async function GET(req: Request) {
 
   out.configuredTemplate = { name: process.env.WHATSAPP_META_TEMPLATE_NAME, lang: process.env.WHATSAPP_META_LANG }
 
+  // 5. Optional: send the param-less `hello_world` sample to prove delivery.
+  const sendtest = url.searchParams.get('sendtest')
+  if (sendtest) {
+    try {
+      const r = await fetch(`https://graph.facebook.com/v21.0/${phoneId}/messages`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp',
+          to: sendtest.replace(/[^\d]/g, ''),
+          type: 'template',
+          template: { name: 'hello_world', language: { code: 'en_US' } },
+        }),
+      })
+      out.sendTest = await r.json()
+    } catch (e) { out.sendTestError = (e as Error).message }
+  }
+
   return NextResponse.json(out)
 }
