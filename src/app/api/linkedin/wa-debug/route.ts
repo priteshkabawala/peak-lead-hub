@@ -43,7 +43,15 @@ export async function GET(req: Request) {
       const r = await fetch(`https://graph.facebook.com/v21.0/${waba}/phone_numbers?fields=id,display_phone_number,verified_name,code_verification_status,quality_rating&access_token=${token}`)
       out.wabaPhoneNumbers = await r.json()
     } catch (e) { out.wabaPhoneNumbersError = (e as Error).message }
+
+    // 4. List message templates (exact name + language + status)
+    try {
+      const r = await fetch(`https://graph.facebook.com/v21.0/${waba}/message_templates?fields=name,language,status,category&access_token=${token}`)
+      out.messageTemplates = await r.json()
+    } catch (e) { out.messageTemplatesError = (e as Error).message }
   }
+
+  out.configuredTemplate = { name: process.env.WHATSAPP_META_TEMPLATE_NAME, lang: process.env.WHATSAPP_META_LANG }
 
   return NextResponse.json(out)
 }
