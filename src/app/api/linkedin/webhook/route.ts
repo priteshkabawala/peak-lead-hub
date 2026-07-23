@@ -172,11 +172,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Could not save lead' }, { status: 500 })
   }
 
+  let automation: unknown = null
   try {
-    await runLeadAutomation(inserted.id)
+    automation = await runLeadAutomation(inserted.id)
+    console.log('[linkedin/webhook] automation:', JSON.stringify(automation))
   } catch (e) {
     console.error('[linkedin/webhook] automation failed (lead still saved):', (e as Error).message)
   }
 
-  return NextResponse.json({ ok: true, leadId: inserted.id })
+  return NextResponse.json({ ok: true, leadId: inserted.id, automation })
 }
