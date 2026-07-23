@@ -28,6 +28,15 @@ export async function GET(req: Request) {
     out.configuredPhoneLookup = await r.json()
   } catch (e) { out.configuredPhoneLookupError = (e as Error).message }
 
+  // 2b. Look up an arbitrary object ID passed as ?id=
+  const anyId = url.searchParams.get('id')
+  if (anyId) {
+    try {
+      const r = await fetch(`https://graph.facebook.com/v21.0/${anyId}?fields=id,name,display_phone_number,verified_name,code_verification_status,account_review_status,status&access_token=${token}`)
+      out.idLookup = await r.json()
+    } catch (e) { out.idLookupError = (e as Error).message }
+  }
+
   // 3. List the phone numbers under the given WABA (the source of truth for IDs)
   if (waba) {
     try {
