@@ -36,11 +36,18 @@ function splitName(full: string): { first: string; last: string } {
   return { first: parts[0], last: parts.slice(1).join(' ') }
 }
 
-// Best-effort keyword match for custom LinkedIn form questions, same
-// heuristic used by the native sync (src/lib/linkedin.ts).
+// Best-effort keyword match for custom LinkedIn form questions.
+// NOTE: "When did you last review your pension(s)?" is a RECENCY question, not
+// a pot-size one — it must not be mistaken for the pension band, so anything
+// mentioning "review" is deliberately left for the notes field.
 function classifyCustomField(label: string): 'pension' | 'seniority' | 'age_range' | 'adviser' | null {
   const t = label.toLowerCase()
-  if (t.includes('pension') || t.includes('investable assets')) return 'pension'
+  if (t.includes('review')) return null
+  if (
+    t.includes('investable assets') ||
+    t.includes('value of your investment') ||
+    (t.includes('pension') && /(value|size|pot|estimate|worth|how much)/.test(t))
+  ) return 'pension'
   if (t.includes('role') || t.includes('seniority') || t.includes('job level')) return 'seniority'
   if (t.includes('age')) return 'age_range'
   if (t.includes('adviser') || t.includes('advisor')) return 'adviser'
@@ -100,34 +107,60 @@ export async function POST(req: Request) {
   }
   for (const [k, v] of Object.entries(body.custom_questions ?? {})) ingest(k, v)
 
-  const take = (k: string) => fields[k]?.value ?? null
-
-  const cleanName = take('name')
-  const { first, last } = cleanName
-    ? splitName(cleanName)
-    : { first: take('first_name') ?? '', last: take('last_name') ?? '' }
-  const phone = take('phone') ?? ''
-  const email = take('email')
-  const jobTitle = take('job_title')
-  const campaign = take('campaign_name') ?? take('campaign')
-  const leadId = take('lead_id')
-
-  if (!first && !phone) {
-    return NextResponse.json({ error: 'name or phone required' }, { status: 400 })
+  // LeadsBridge sends LinkedIn's own field labels ("First name", "Phone
+  // number", "Email address", "LinkedIn profile URL"...), which normalise to
+  // first_name / phone_number / email_address / linkedin_profile_url — so
+  // resolve each CRM field from a list of aliases rather than one exact key.
+  const pick = (...aliases: string[]) => {
+    for (const a of aliases) if (fields[a]) return fields[a].value
+    return null
   }
 
-  let pension = take('pension')
-  let seniority = take('seniority')
-  let ageRange = take('age_range')
-  let adviser = take('adviser')
-  const extraNotes: string[] = []
+  const cleanName = pick('name', 'full_name')
+  const { first, last } = cleanName
+    ? splitName(cleanName)
+    : {
+        first: pick('first_name', 'firstname', 'first') ?? '',
+        last: pick('last_name', 'lastname', 'last', 'surname') ?? '',
+      }
+  const phone = pick('phone', 'phone_number', 'phonenumber', 'mobile', 'mobile_number', 'telephone') ?? ''
+  const email = pick('email', 'email_address', 'emailaddress')
+  const jobTitle = pick('job_title', 'jobtitle', 'title')
+  const campaign = pick('campaign_name', 'campaign')
+  const leadId = pick('lead_id', 'leadid')
+  const linkedinUrl = pick('linkedin_profile_url', 'linkedin_url', 'linkedin', 'profile_url')
+  const city = pick('city', 'location')
 
-  // Every remaining field (e.g. a LeadsBridge field named "Your Pension
-  // Question Tag") is classified by keyword, so custom questions land in the
-  // right column no matter what the bridge fields were named.
+  if (!first && !phone) {
+    // Log the keys received (not values — this is lead PII) so a mapping
+    // mismatch can be diagnosed without another round-trip.
+    console.error('[linkedin/webhook] no name/phone. keys received:', Object.keys(fields).join(','))
+    return NextResponse.json({ error: 'name or phone required', keysReceived: Object.keys(fields) }, { status: 400 })
+  }
+
+  let pension = pick('pension')
+  let seniority = pick('seniority')
+  let ageRange = pick('age_range')
+  let adviser = pick('adviser')
+  const extraNotes: string[] = []
+  if (city) extraNotes.push(`City: ${city}`)
+
+  // Every remaining field (e.g. "When did you last review your pension(s)?")
+  // is classified by keyword; anything unrecognised is kept in notes so no
+  // answer is ever silently dropped.
   const KNOWN = new Set([
-    'name', 'first_name', 'last_name', 'email', 'phone', 'job_title',
-    'campaign_name', 'campaign', 'lead_id', 'pension', 'seniority', 'age_range', 'adviser',
+    'name', 'full_name', 'first_name', 'firstname', 'first',
+    'last_name', 'lastname', 'last', 'surname',
+    'email', 'email_address', 'emailaddress',
+    'phone', 'phone_number', 'phonenumber', 'mobile', 'mobile_number', 'telephone',
+    'job_title', 'jobtitle', 'title',
+    'campaign_name', 'campaign', 'lead_id', 'leadid',
+    'linkedin_profile_url', 'linkedin_url', 'linkedin', 'profile_url',
+    'city', 'location',
+    'pension', 'seniority', 'age_range', 'adviser',
+    // LinkedIn/LeadsBridge metadata we don't need in the CRM
+    'ad_destination_url', 'ad_form_id', 'ad_form_name', 'campaign_group_id',
+    'campaign_group_name', 'campaign_id', 'creative_id', 'creative_name', 'created_on',
   ])
   for (const [nk, { label, value }] of Object.entries(fields)) {
     if (KNOWN.has(nk)) continue
@@ -170,6 +203,13 @@ export async function POST(req: Request) {
   if (error || !inserted) {
     console.error('[linkedin/webhook] insert failed:', error?.message)
     return NextResponse.json({ error: 'Could not save lead' }, { status: 500 })
+  }
+
+  // LinkedIn profile URL is admin-only — store it in the RLS-protected table
+  // so callers never see it (same as manually-entered leads).
+  if (linkedinUrl) {
+    await supabaseAdmin.from('lead_private')
+      .upsert({ lead_id: inserted.id, linkedin_url: linkedinUrl, updated_at: new Date().toISOString() })
   }
 
   let automation: unknown = null
