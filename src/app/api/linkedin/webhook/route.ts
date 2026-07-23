@@ -85,11 +85,25 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   }
 
-  let body: Payload
-  try {
-    body = await req.json()
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
+  // Read the raw body first so we can accept JSON *or* form-encoded posts
+  // (bridges differ), and so a mis-shaped payload can be diagnosed.
+  const raw = await req.text()
+  let body: Payload = {}
+  if (raw.trim()) {
+    try {
+      body = JSON.parse(raw)
+    } catch {
+      // Fall back to form-encoded (application/x-www-form-urlencoded)
+      try {
+        const params = new URLSearchParams(raw)
+        const obj: Record<string, string> = {}
+        for (const [k, v] of params.entries()) obj[k] = v
+        if (Object.keys(obj).length === 0) throw new Error('empty')
+        body = obj as Payload
+      } catch {
+        return NextResponse.json({ error: 'Unparseable body', rawPreview: raw.slice(0, 300) }, { status: 400 })
+      }
+    }
   }
 
   // Normalise every incoming key (lowercase, non-alphanumerics -> underscore)
@@ -134,8 +148,12 @@ export async function POST(req: Request) {
   if (!first && !phone) {
     // Log the keys received (not values — this is lead PII) so a mapping
     // mismatch can be diagnosed without another round-trip.
-    console.error('[linkedin/webhook] no name/phone. keys received:', Object.keys(fields).join(','))
-    return NextResponse.json({ error: 'name or phone required', keysReceived: Object.keys(fields) }, { status: 400 })
+    console.error('[linkedin/webhook] no name/phone. keys received:', Object.keys(fields).join(','), '| raw:', raw.slice(0, 500))
+    return NextResponse.json({
+      error: 'name or phone required',
+      keysReceived: Object.keys(fields),
+      rawPreview: raw.slice(0, 300),
+    }, { status: 400 })
   }
 
   let pension = pick('pension')
