@@ -1,0 +1,40 @@
+import { NextResponse } from 'next/server'
+
+// TEMPORARY WhatsApp diagnostic. Secret-protected. Uses the token already in
+// Vercel to ask Meta which phone numbers exist under the WABA and whether the
+// configured WHATSAPP_META_PHONE_NUMBER_ID is valid/accessible. Delete after use.
+export async function GET(req: Request) {
+  const url = new URL(req.url)
+  if (url.searchParams.get('secret') !== process.env.LINKEDIN_WEBHOOK_SECRET) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+  }
+
+  const token = process.env.WHATSAPP_META_TOKEN
+  const phoneId = process.env.WHATSAPP_META_PHONE_NUMBER_ID
+  const waba = url.searchParams.get('waba') // pass ?waba=<WABA_ID>
+  if (!token) return NextResponse.json({ error: 'WHATSAPP_META_TOKEN not set' }, { status: 500 })
+
+  const out: Record<string, unknown> = { configuredPhoneNumberId: phoneId }
+
+  // 1. Who does this token belong to?
+  try {
+    const r = await fetch(`https://graph.facebook.com/v21.0/debug_token?input_token=${token}&access_token=${token}`)
+    out.tokenInfo = await r.json()
+  } catch (e) { out.tokenInfoError = (e as Error).message }
+
+  // 2. What does the configured phone-number ID resolve to (if anything)?
+  try {
+    const r = await fetch(`https://graph.facebook.com/v21.0/${phoneId}?fields=id,display_phone_number,verified_name,quality_rating&access_token=${token}`)
+    out.configuredPhoneLookup = await r.json()
+  } catch (e) { out.configuredPhoneLookupError = (e as Error).message }
+
+  // 3. List the phone numbers under the given WABA (the source of truth for IDs)
+  if (waba) {
+    try {
+      const r = await fetch(`https://graph.facebook.com/v21.0/${waba}/phone_numbers?fields=id,display_phone_number,verified_name,code_verification_status,quality_rating&access_token=${token}`)
+      out.wabaPhoneNumbers = await r.json()
+    } catch (e) { out.wabaPhoneNumbersError = (e as Error).message }
+  }
+
+  return NextResponse.json(out)
+}
