@@ -140,7 +140,14 @@ export async function POST(req: Request) {
   const phone = pick('phone', 'phone_number', 'phonenumber', 'mobile', 'mobile_number', 'telephone') ?? ''
   const email = pick('email', 'email_address', 'emailaddress')
   const jobTitle = pick('job_title', 'jobtitle', 'title')
-  const campaign = pick('campaign_name', 'campaign')
+  // Campaign resolution order:
+  //  1. ?campaign= on the webhook URL — each LeadsBridge bridge points at its
+  //     own URL, so this is reliable even when the bridge doesn't map fields.
+  //  2. a campaign_name field in the payload
+  //  3. fallback 'LinkedIn'
+  // This matters: the guide PDF is chosen from the campaign name, so an
+  // unknown campaign would send every lead the default guide.
+  const campaign = clean(reqUrl.searchParams.get('campaign')) ?? pick('campaign_name', 'campaign')
   const leadId = pick('lead_id', 'leadid')
   const linkedinUrl = pick('linkedin_profile_url', 'linkedin_url', 'linkedin', 'profile_url')
   const city = pick('city', 'location')
@@ -197,9 +204,24 @@ export async function POST(req: Request) {
   }
   const supabaseAdmin = createClient(url, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } })
 
-  // Dedup on LinkedIn's lead id when the bridge provides one.
+  // Dedup, preferring LinkedIn's own lead id.
   if (leadId) {
     const { data: existing } = await supabaseAdmin.from('leads').select('id').eq('linkedin_lead_id', leadId).maybeSingle()
+    if (existing) return NextResponse.json({ ok: true, duplicate: true, leadId: existing.id })
+  } else if (phone || email) {
+    // Fallback when the bridge doesn't map Lead Id: treat the same phone or
+    // email arriving again within 30 days as a re-delivery, not a new lead.
+    // (Bridge retries caused the same person to import several times.)
+    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+    const ors: string[] = []
+    if (phone) ors.push(`phone.eq.${phone}`)
+    if (email) ors.push(`email.eq.${email}`)
+    const { data: existing } = await supabaseAdmin
+      .from('leads').select('id')
+      .or(ors.join(','))
+      .gte('created_at', since)
+      .limit(1)
+      .maybeSingle()
     if (existing) return NextResponse.json({ ok: true, duplicate: true, leadId: existing.id })
   }
 
