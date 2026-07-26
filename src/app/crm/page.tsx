@@ -47,6 +47,20 @@ function ticket(pen?: string | null) {
 
 function fmt(n: number) { return '£' + Math.round(n).toLocaleString('en-GB') }
 
+// Leads arrive throughout the day, so show when — not just the date. Uses
+// created_at (a timestamp) rather than the date-only `date` column.
+function fmtDateTime(iso: string) {
+  const d = new Date(iso)
+  return {
+    date: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }),
+    time: d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+  }
+}
+function fmtDateTimeFlat(iso: string) {
+  const { date, time } = fmtDateTime(iso)
+  return `${date} ${time}`
+}
+
 function validPhone(p: string) {
   const c = p.replace(/[\s\-()]/g, '')
   return /^(07\d{9}|01\d{8,9}|02\d{9}|03\d{9}|0800\d{6,7}|\+447\d{9})$/.test(c)
@@ -265,10 +279,10 @@ export default function Home() {
   }
 
   const exportCSV = () => {
-    const h = ['Date','First Name','Last Name','Email','Phone','Phone Valid','Campaign','Job Title','Seniority','Age','Pension','Adviser','Score','Status','Est. Initial Fee','Notes']
+    const h = ['Date & Time','First Name','Last Name','Email','Phone','Phone Valid','Campaign','Job Title','Seniority','Age','Pension','Adviser','Score','Status','Est. Initial Fee','Notes']
     const rows = leads.map(l => {
       const t = ticket(l.pension)
-      return [l.date,l.first_name,l.last_name,l.email,l.phone,l.phone_valid?'Valid':'Invalid',l.campaign,l.job_title,l.seniority,l.age_range,PEN_LABEL[l.pension??'']??'',l.adviser,l.score,l.status,t?fmt(t.initial):'',l.notes]
+      return [fmtDateTimeFlat(l.created_at),l.first_name,l.last_name,l.email,l.phone,l.phone_valid?'Valid':'Invalid',l.campaign,l.job_title,l.seniority,l.age_range,PEN_LABEL[l.pension??'']??'',l.adviser,l.score,l.status,t?fmt(t.initial):'',l.notes]
         .map(c => `"${String(c??'').replace(/"/g,'""')}"`).join(',')
     })
     const a = document.createElement('a')
@@ -547,7 +561,7 @@ export default function Home() {
         <div className="card" style={{padding:0}}>
           <div className="tbl-wrap">
             <table>
-              <thead><tr><th>Date</th><th>Name</th><th>Score</th><th>Phone</th><th>Campaign</th><th>Pension</th><th>Job Title</th><th>Status</th><th>Est. Init. 🔒</th><th>LinkedIn 🔒</th><th></th></tr></thead>
+              <thead><tr><th>Date &amp; Time</th><th>Name</th><th>Score</th><th>Phone</th><th>Campaign</th><th>Pension</th><th>Job Title</th><th>Status</th><th>Est. Init. 🔒</th><th>LinkedIn 🔒</th><th></th></tr></thead>
               <tbody>
                 {loading ? <tr><td colSpan={11} className="empty">Loading...</td></tr>
                 : filtered.length === 0 ? <tr><td colSpan={11} className="empty">No leads found. Try adjusting filters.</td></tr>
@@ -555,7 +569,10 @@ export default function Home() {
                   const t = ticket(l.pension)
                   return (
                     <tr key={l.id}>
-                      <td style={{fontSize:11,color:'var(--muted)'}}>{l.date}</td>
+                      <td style={{fontSize:11,color:'var(--muted)',whiteSpace:'nowrap'}}>
+                        <div>{fmtDateTime(l.created_at).date}</div>
+                        <div style={{fontVariantNumeric:'tabular-nums'}}>{fmtDateTime(l.created_at).time}</div>
+                      </td>
                       <td><div style={{fontWeight:600}}>{l.first_name} {l.last_name}</div><div style={{fontSize:11,color:'var(--muted)'}}>{l.email??'—'}</div></td>
                       <td><span className={scClass(l.score)}>{l.score}</span></td>
                       <td><span style={{color:l.phone_valid?'var(--green)':'var(--red)',fontWeight:700,marginRight:3}}>{l.phone_valid?'✓':'⚠'}</span><span style={{fontSize:12}}>{l.phone}</span></td>
