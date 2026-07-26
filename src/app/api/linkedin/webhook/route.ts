@@ -30,6 +30,31 @@ function clean(v: unknown): string | null {
   return t
 }
 
+// The leads.score column is GENERATED from exact codes ('500k+', '250-500k',
+// '100-250k', '50-100k', '<50k'), but LinkedIn sends free text like
+// "£250K - £500K". Parse the numbers out and map to a band so leads score.
+// Uses the lower bound of a range, which is the conservative choice.
+function normalisePensionBand(v: string | null): string | null {
+  if (!v) return null
+  const t = v.toLowerCase().replace(/[,\s]/g, '')
+  if (/under|lessthan|below|^</.test(t)) return '<50k'
+
+  const nums = [...t.matchAll(/(\d+(?:\.\d+)?)(k|m)?/g)].map((m) => {
+    const n = parseFloat(m[1])
+    if (m[2] === 'k') return n * 1_000
+    if (m[2] === 'm') return n * 1_000_000
+    return n
+  })
+  if (!nums.length) return null
+
+  const low = Math.min(...nums)
+  if (low >= 500_000) return '500k+'
+  if (low >= 250_000) return '250-500k'
+  if (low >= 100_000) return '100-250k'
+  if (low >= 50_000) return '50-100k'
+  return '<50k'
+}
+
 function splitName(full: string): { first: string; last: string } {
   const parts = full.trim().split(/\s+/)
   if (parts.length === 1) return { first: parts[0], last: '' }
@@ -197,6 +222,9 @@ export async function POST(req: Request) {
     else extraNotes.push(`${label}: ${value}`)
   }
 
+  // Keep the lead's exact wording, since pension is bucketed into a band below.
+  if (pension) extraNotes.push(`Investments: ${pension}`)
+
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!url || !serviceKey) {
@@ -234,7 +262,9 @@ export async function POST(req: Request) {
     phone_valid: validPhone(phone),
     campaign: campaign || 'LinkedIn',
     job_title: jobTitle,
-    seniority, age_range: ageRange, pension, adviser,
+    seniority, age_range: ageRange, adviser,
+    // Normalised so the generated score column recognises it
+    pension: normalisePensionBand(pension),
     notes: extraNotes.length ? extraNotes.join(' · ') : null,
     status: 'New',
     linkedin_lead_id: leadId,

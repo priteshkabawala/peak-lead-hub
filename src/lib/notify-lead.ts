@@ -18,7 +18,9 @@ function guideForCampaign(campaign: string | null): { file: string; title: strin
   if (c.includes('combine') || c.includes('pension pot') || c.includes('consolidat')) {
     return { file: 'combine-your-pensions.pdf', title: 'Combining Your Pension Pots' }
   }
-  if (c.includes('12-min') || c.includes('12 min') || (c.includes('12') && c.includes('guide'))) {
+  // Live campaign for this guide is named "12m Read"; also match the fuller
+  // "12-Minute Retirement Plan" wording in case it's renamed.
+  if (c.includes('12-min') || c.includes('12 min') || c.includes('12m') || (c.includes('12') && c.includes('guide'))) {
     return { file: 'your-12-minute-guide.pdf', title: 'Your 12-Minute Pension Guide' }
   }
   return DEFAULT_GUIDE
