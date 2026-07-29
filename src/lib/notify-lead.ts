@@ -187,6 +187,76 @@ export async function runLeadAutomation(leadId: number | string) {
 
 // Emails every active caller that a new lead has landed. Best-effort:
 // returns the number of recipients, or throws on a hard configuration error.
+/**
+ * Tell the admin a lead has closed, or that a number needs fixing.
+ *
+ *  final_try – paid lead ended (not interested, or 4 attempts). Worth one more
+ *              attempt by the admin before it is written off.
+ *  decide    – explicit opt-out ("do not call"). The admin decides what to do,
+ *              and this email must NEVER invite another call attempt.
+ *  park      – the number is unusable, it goes to the parked queue.
+ */
+export async function notifyAdminOfClosure(p: {
+  leadId: number | string
+  leadName: string
+  phone: string
+  kind: 'final_try' | 'decide' | 'park'
+  detail?: string
+}) {
+  const env = envOrNull()
+  if (!env) return { sent: 0, note: 'not configured' }
+
+  const supabaseAdmin = createClient(env.url, env.serviceKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  })
+  const { data: admins } = await supabaseAdmin
+    .from('profiles').select('email').eq('role', 'admin').eq('active', true)
+  const to = (admins ?? []).map(a => a.email).filter(Boolean)
+  if (!to.length) return { sent: 0, note: 'no admins' }
+
+  const leadLink = `${env.appUrl}/crm?lead=${p.leadId}`
+  const copy = {
+    final_try: {
+      subject: `Worth one last try: ${p.leadName}`,
+      colour: '#b26b00', bg: '#fff8ed', border: '#ffe2b8',
+      head: 'This lead has gone cold',
+      body: `The caller finished with <b>${p.leadName}</b> (${p.detail ?? 'closed'}). You paid for this lead, so it may be worth one final call or email from you before writing it off.`,
+      cta: 'Open the lead',
+    },
+    decide: {
+      subject: `Opt-out to review: ${p.leadName}`,
+      colour: '#c0304a', bg: '#fff5f6', border: '#ffd0d8',
+      head: 'Lead asked not to be called',
+      body: `<b>${p.leadName}</b> asked not to be contacted again. They have been removed from the call schedule. Review and discard when you are ready.`,
+      cta: 'Review the lead',
+    },
+    park: {
+      subject: `Number needs fixing: ${p.leadName}`,
+      colour: '#0060c2', bg: '#f0f7ff', border: '#cfe4ff',
+      head: 'Parked, number unusable',
+      body: `The caller could not reach <b>${p.leadName}</b> on <code>${p.phone}</code>. The lead is parked and hidden from the caller. Update the number to put it back in the queue, or email them to ask for a better one.`,
+      cta: 'Fix the number',
+    },
+  }[p.kind]
+
+  const resend = new Resend(env.resendKey)
+  await resend.emails.send({
+    from: FROM_BRAND,
+    to,
+    subject: copy.subject,
+    html: `
+      <div style="font-family:system-ui,sans-serif;max-width:500px;margin:0 auto;padding:28px 24px;background:#fff;border:1px solid #e6e9ef;border-radius:12px">
+        <div style="background:${copy.bg};border:1px solid ${copy.border};border-radius:9px;padding:13px 16px;margin-bottom:18px">
+          <div style="font-weight:800;font-size:15px;color:${copy.colour}">${copy.head}</div>
+        </div>
+        <p style="font-size:14px;line-height:1.6;margin:0 0 20px;color:#323338">${copy.body}</p>
+        <a href="${leadLink}" style="display:inline-block;background:#0073ea;color:#fff;text-decoration:none;font-weight:700;font-size:14px;padding:11px 22px;border-radius:8px">${copy.cta} →</a>
+        <p style="font-size:12px;color:#9699a6;margin:22px 0 0">PeaK Lead Hub</p>
+      </div>`,
+  })
+  return { sent: to.length }
+}
+
 export async function notifyCallersOfNewLead(leadName: string, leadId?: number | string | null) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
