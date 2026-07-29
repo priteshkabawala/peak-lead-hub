@@ -1,6 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { runLeadAutomation } from '@/lib/notify-lead'
+import { verifyPhone } from '@/lib/phone'
+import { openInitialSchedule } from '@/lib/schedule'
 
 // Webhook intake for LinkedIn leads relayed via a bridge service (LeadsBridge,
 // Make, Zapier, etc.) that holds LinkedIn's own approved Lead Sync access.
@@ -13,10 +15,7 @@ import { runLeadAutomation } from '@/lib/notify-lead'
 
 export const runtime = 'nodejs'
 
-function validPhone(p: string) {
-  const c = (p || '').replace(/[\s\-()]/g, '')
-  return /^(07\d{9}|01\d{8,9}|02\d{9}|03\d{9}|0800\d{6,7}|\+447\d{9})$/.test(c)
-}
+// Phone validation now lives in src/lib/phone.ts (libphonenumber-based).
 
 // Normalise an incoming value to a real value or null. LeadsBridge sends
 // unmapped fields as empty strings or the literal "{{token}}" placeholder,
@@ -253,20 +252,29 @@ export async function POST(req: Request) {
     if (existing) return NextResponse.json({ ok: true, duplicate: true, leadId: existing.id })
   }
 
+  // Validate the number before the lead can reach the caller. A doubtful
+  // number is parked for the admin rather than wasting caller time on a lead
+  // we have already paid for.
+  const verdict = await verifyPhone(phone)
+
   const { data: inserted, error } = await supabaseAdmin.from('leads').insert([{
     date: new Date().toISOString().split('T')[0],
     first_name: first || 'Unknown',
     last_name: last || '',
     email,
     phone,
-    phone_valid: validPhone(phone),
+    phone_valid: verdict.ok,
+    phone_e164: verdict.e164,
+    phone_type: verdict.type,
+    parked_at: verdict.ok ? null : new Date().toISOString(),
+    parked_reason: verdict.ok ? null : verdict.reason,
     campaign: campaign || 'LinkedIn',
     job_title: jobTitle,
     seniority, age_range: ageRange, adviser,
     // Normalised so the generated score column recognises it
     pension: normalisePensionBand(pension),
     notes: extraNotes.length ? extraNotes.join(' · ') : null,
-    status: 'New',
+    status: verdict.ok ? 'New' : 'Invalid Phone',
     linkedin_lead_id: leadId,
   }]).select('id').single()
 
@@ -280,6 +288,13 @@ export async function POST(req: Request) {
   if (linkedinUrl) {
     await supabaseAdmin.from('lead_private')
       .upsert({ lead_id: inserted.id, linkedin_url: linkedinUrl, updated_at: new Date().toISOString() })
+  }
+
+  // Only a lead with a usable number enters the call schedule. Parked leads
+  // stay out of the caller's queue until the admin fixes or clears them.
+  if (verdict.ok) {
+    try { await openInitialSchedule(inserted.id) }
+    catch (e) { console.error('[linkedin/webhook] schedule failed:', (e as Error).message) }
   }
 
   let automation: unknown = null

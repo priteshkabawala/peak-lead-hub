@@ -45,17 +45,49 @@ export type CallAttempt = {
   created_at: string
 }
 
-// Preset call outcomes the caller picks from, plus the lead status each maps to.
-export const CALL_OUTCOMES: { value: string; label: string; status?: string; tone: 'green' | 'amber' | 'red' | 'blue' }[] = [
-  { value: 'no_answer',        label: 'No answer',             status: 'Contacted',      tone: 'amber' },
-  { value: 'voicemail',        label: 'Left voicemail',        status: 'Contacted',      tone: 'amber' },
-  { value: 'call_back',        label: 'Call back later',       status: 'Contacted',      tone: 'amber' },
-  { value: 'connected',        label: 'Connected — interested', status: 'Qualified',     tone: 'green' },
-  { value: 'meeting_booked',   label: 'Meeting booked',        status: 'Meeting Booked', tone: 'green' },
-  { value: 'not_interested',   label: 'Not interested',        status: 'Cold',           tone: 'red' },
-  { value: 'do_not_call',      label: 'Do not call',           status: 'Cold',           tone: 'red' },
-  { value: 'wrong_number',     label: 'Wrong / bad number',    status: 'Invalid Phone',  tone: 'red' },
+// Preset call outcomes the caller picks from.
+//  status    – lead status this outcome moves the lead to
+//  schedule  – 'continue' keeps the +3 day ladder running, 'stop' ends it
+//  askDate   – caller picks the next callback date instead of +3 days
+//  adminAlert– what the admin is told when this fires:
+//              'final_try'  paid lead, worth one more attempt by the admin
+//              'decide'     explicit opt-out, admin decides (never "try again")
+//              'park'       number is unusable, goes to the parked queue
+//  confirm   – one-way door, ask the caller to confirm before saving
+export type OutcomeMeta = {
+  value: string
+  label: string
+  status: string
+  tone: 'green' | 'amber' | 'red' | 'blue'
+  schedule: 'continue' | 'stop'
+  askDate?: boolean
+  adminAlert?: 'final_try' | 'decide' | 'park'
+  confirm?: boolean
+}
+
+export const CALL_OUTCOMES: OutcomeMeta[] = [
+  { value: 'no_answer',      label: 'No answer',              status: 'Contacted',      tone: 'amber', schedule: 'continue' },
+  { value: 'voicemail',      label: 'Left voicemail',         status: 'Contacted',      tone: 'amber', schedule: 'continue' },
+  { value: 'call_back',      label: 'Call back later',        status: 'Contacted',      tone: 'amber', schedule: 'continue', askDate: true },
+  { value: 'connected',      label: 'Connected — interested', status: 'Qualified',      tone: 'green', schedule: 'stop' },
+  { value: 'meeting_booked', label: 'Meeting booked',         status: 'Meeting Booked', tone: 'green', schedule: 'stop' },
+  { value: 'not_interested', label: 'Not interested',         status: 'Cold',           tone: 'red',   schedule: 'stop', adminAlert: 'final_try', confirm: true },
+  { value: 'do_not_call',    label: 'Do not call',            status: 'Cold',           tone: 'red',   schedule: 'stop', adminAlert: 'decide',    confirm: true },
+  { value: 'wrong_number',   label: 'Wrong / bad number',     status: 'Invalid Phone',  tone: 'red',   schedule: 'stop', adminAlert: 'park',      confirm: true },
 ]
+
+export function outcomeMeta(value: string): OutcomeMeta | undefined {
+  return CALL_OUTCOMES.find(o => o.value === value)
+}
+
+export type CallSchedule = {
+  id: number
+  lead_id: number
+  attempt_no: number
+  due_on: string
+  due_reason: string
+  completed_at: string | null
+}
 
 export async function logCallAttempt(params: {
   lead_id: number
