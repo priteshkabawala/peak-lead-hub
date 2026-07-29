@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { supabase, logAudit, type Lead, type Profile, type LeadPrivate } from '@/lib/supabase'
 import CallerManagement from '@/components/CallerManagement'
 import CallerWorkspace from '@/components/CallerWorkspace'
+import CallerDashboard from '@/components/CallerDashboard'
 import AuditLogView from '@/components/AuditLog'
 import LinkedInAdmin from '@/components/LinkedInAdmin'
 
@@ -80,7 +81,8 @@ function senTag(sen?: string | null) {
 
 // ── types ─────────────────────────────────────────────────────────────────────
 
-type Tab = 'dashboard' | 'leads' | 'caller' | 'add' | 'strategy' | 'callers_admin' | 'audit_admin' | 'linkedin_admin'
+type Tab = 'dashboard' | 'today' | 'leads' | 'caller' | 'add' | 'strategy' | 'callers_admin' | 'audit_admin' | 'linkedin_admin'
+type CallerTab = 'today' | 'leads'
 
 interface FormState {
   first_name: string; last_name: string; email: string; phone: string
@@ -103,6 +105,7 @@ export default function Home() {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [authLoading, setAuthLoading] = useState(true)
   const [tab, setTab] = useState<Tab>('dashboard')
+  const [callerTab, setCallerTab] = useState<CallerTab>('today')
   const [leads, setLeads] = useState<Lead[]>([])
   const [loading, setLoading] = useState(true)
   const [notif, setNotif] = useState<{ msg: string; color: string } | null>(null)
@@ -361,13 +364,15 @@ export default function Home() {
     )
   }
 
-  // ── CALLER: dedicated calling workspace only (no dashboard / financials) ──
+  // ── CALLER: today's call queue, then the per-lead workspace ──────────────
   if (profile?.role === 'caller') {
     return (
       <>
         {notif && <div className="notif" style={{ background: notif.color, opacity: 1 }}>{notif.msg}</div>}
         <nav className="nav">
           <div className="brand">PeaK <span>Lead Hub</span> <em>Peak Personal Finance</em></div>
+          <button className={`nav-btn${callerTab === 'today' ? ' active' : ''}`} onClick={() => setCallerTab('today')}>📋 Today</button>
+          <button className={`nav-btn${callerTab === 'leads' ? ' active' : ''}`} onClick={() => setCallerTab('leads')}>📞 All leads</button>
           <div className="nav-right">
             <span className="live-dot" />
             <span style={{ fontSize: 11.5, color: 'var(--muted)' }}>{profile.name}</span>
@@ -375,7 +380,9 @@ export default function Home() {
             <button className="btn btn-ghost btn-sm" onClick={handleLogout} style={{ fontSize: 11.5 }}>Sign out</button>
           </div>
         </nav>
-        <CallerWorkspace currentUser={profile} onNotif={showNotif} />
+        {callerTab === 'today'
+          ? <CallerDashboard currentUser={profile} onNotif={showNotif} />
+          : <CallerWorkspace currentUser={profile} onNotif={showNotif} />}
       </>
     )
   }
@@ -392,8 +399,8 @@ export default function Home() {
       {/* Nav */}
       <nav className="nav">
         <div className="brand">PeaK <span>Lead Hub</span> <em>Peak Personal Finance</em></div>
-        {(['dashboard','leads','caller','add','strategy'] as Tab[]).map((t, i) => {
-          const labels = ['📊 Dashboard','👥 All Leads','📞 Caller View','➕ Add Lead','🎯 Strategy']
+        {(['dashboard','today','leads','caller','add','strategy'] as Tab[]).map((t, i) => {
+          const labels = ['📊 Dashboard','📋 Today','👥 All Leads','📞 Caller View','➕ Add Lead','🎯 Strategy']
           return <button key={t} className={`nav-btn${tab===t?' active':''}`} onClick={() => setTab(t)}>{labels[i]}</button>
         })}
         {profile?.role === 'admin' && <>
@@ -597,6 +604,9 @@ export default function Home() {
           </div>
         </div>
       </div>
+
+      {/* ── TODAY'S CALL QUEUE (admin can work or supervise the queue) ──────── */}
+      {tab === 'today' && profile && <CallerDashboard currentUser={profile} onNotif={showNotif} />}
 
       {/* ── CALLER WORKSPACE (admins can call too) ──────────────────────────── */}
       {tab === 'caller' && profile && <CallerWorkspace currentUser={profile} onNotif={showNotif} />}
