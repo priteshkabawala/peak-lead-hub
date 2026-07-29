@@ -49,21 +49,28 @@ export async function GET(req: Request) {
   // ── morning only: pull missed meetings back into the queue ────────────────
   if (when === 'morning') {
     const { data: booked } = await supa
-      .from('leads').select('id,first_name,last_name')
+      .from('leads').select('id,first_name,last_name,meeting_at')
       .eq('status', 'Meeting Booked')
     for (const l of booked ?? []) {
       const { data: open } = await supa
         .from('call_schedule').select('id')
         .eq('lead_id', l.id).is('completed_at', null).maybeSingle()
       if (open) continue
-      const { data: att } = await supa
-        .from('call_attempts').select('created_at')
-        .eq('lead_id', l.id).eq('outcome', 'meeting_booked')
-        .order('created_at', { ascending: false }).limit(1).maybeSingle()
-      // Give the meeting 2 days to happen before assuming it was missed.
-      if (!att) continue
-      const age = Date.now() - Date.parse(att.created_at)
-      if (age < 2 * 86400000) continue
+
+      if (l.meeting_at) {
+        // We know the actual slot: it is missed only once it is in the past.
+        if (Date.parse(l.meeting_at) > Date.now()) continue
+      } else {
+        // Older bookings have no slot recorded, so fall back to the age of the
+        // booking itself and give it 2 days before assuming it was missed.
+        const { data: att } = await supa
+          .from('call_attempts').select('created_at')
+          .eq('lead_id', l.id).eq('outcome', 'meeting_booked')
+          .order('created_at', { ascending: false }).limit(1).maybeSingle()
+        if (!att) continue
+        if (Date.now() - Date.parse(att.created_at) < 2 * 86400000) continue
+      }
+
       await requeue(l.id, 'missed_meeting')
       requeued.push(`${l.first_name} ${l.last_name}`)
     }

@@ -35,9 +35,9 @@ const STATUS_COLOUR: Record<string, string> = {
   'Meeting Booked': '#00c875', 'Cold': '#9699a6', 'Invalid Phone': '#e2445c',
 }
 
-interface Props { currentUser: Profile; onNotif: (m: string, c?: string) => void }
+interface Props { currentUser: Profile; onNotif: (m: string, c?: string) => void; onBook?: (leadId: number) => void }
 
-export default function CallerDashboard({ currentUser, onNotif }: Props) {
+export default function CallerDashboard({ currentUser, onNotif, onBook }: Props) {
   const [rows, setRows] = useState<Row[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<'today' | 'overdue' | 'all'>('today')
@@ -101,6 +101,14 @@ export default function CallerDashboard({ currentUser, onNotif }: Props) {
 
   const save = async () => {
     if (!openLead || !outcome || !meta) return
+    // Booking needs the actual slot, so hand off to the booking screen rather
+    // than closing the lead here with no meeting time recorded.
+    if (outcome === 'meeting_booked' && onBook) {
+      const id = openLead.lead_id
+      setOpenLead(null); setOutcome(''); setNote(''); setCbDate('')
+      onBook(id)
+      return
+    }
     if (meta.confirm && !confirm(`"${meta.label}" closes this lead and stops all further callbacks.\n\nAre you sure?`)) return
     if (meta.askDate && !cbDate) { onNotif('⚠ Pick a callback date', 'var(--amber)'); return }
 
@@ -152,6 +160,7 @@ export default function CallerDashboard({ currentUser, onNotif }: Props) {
                   <td className="c-act"><div className="cd-acts">
                     <a className="cd-btn" href={`tel:${r.phone.replace(/[^\d+]/g, '')}`}>Call</a>
                     <button className="cd-btn o" onClick={() => { setOpenLead(r); setOutcome(''); setNote(''); setCbDate('') }}>Log</button>
+                    {onBook && <button className="cd-btn o" onClick={() => onBook(r.lead_id)}>Book</button>}
                   </div></td>
                 </tr>
               )
@@ -206,7 +215,9 @@ export default function CallerDashboard({ currentUser, onNotif }: Props) {
                   <button key={o.value} className={`cd-o${outcome === o.value ? ' sel' : ''}`} onClick={() => setOutcome(o.value)}>
                     <i style={{ background: o.tone === 'green' ? '#00c875' : o.tone === 'red' ? '#e2445c' : '#fdab3d' }} />
                     {o.label}
-                    <em>{o.schedule === 'stop' ? 'closes lead' : o.askDate ? 'pick a date' : 'next in 3 days'}</em>
+                    <em>{o.value === 'meeting_booked' ? 'pick a slot next'
+                      : o.schedule === 'stop' ? 'closes lead'
+                      : o.askDate ? 'pick a date' : 'next in 3 days'}</em>
                   </button>
                 ))}
               </div>

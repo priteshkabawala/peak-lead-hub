@@ -26,7 +26,7 @@ export async function POST(req: Request) {
   const { data: profile } = await supa.from('profiles').select('id,name,role').eq('id', user.id).single()
   if (!profile) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
 
-  const { leadId, outcome, note, callbackDate } = await req.json().catch(() => ({}))
+  const { leadId, outcome, note, callbackDate, meetingAt } = await req.json().catch(() => ({}))
   if (!leadId || !outcome) return NextResponse.json({ error: 'leadId and outcome required' }, { status: 400 })
 
   const meta = outcomeMeta(outcome)
@@ -60,6 +60,12 @@ export async function POST(req: Request) {
     patch.parked_at = new Date().toISOString()
     patch.parked_reason = 'Caller reported wrong / bad number'
     patch.phone_valid = false
+  }
+  // A confirmed Calendly slot. Stored so the calendar can show it and the
+  // morning digest can tell a genuinely missed meeting from one still ahead.
+  if (outcome === 'meeting_booked') {
+    const t = meetingAt ? Date.parse(meetingAt) : NaN
+    if (!Number.isNaN(t)) patch.meeting_at = new Date(t).toISOString()
   }
   await supa.from('leads').update(patch).eq('id', leadId)
 

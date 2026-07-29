@@ -1,6 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
 import { sendWhatsApp } from './whatsapp'
+import { verifyPhone } from './phone'
+import { openInitialSchedule } from './schedule'
 
 const FROM_BRAND = 'PeaK Lead Hub <noreply@mypensionadvisor.co.uk>'
 const FROM_CLIENT = 'Peak Personal Finance <noreply@mypensionadvisor.co.uk>'
@@ -26,10 +28,9 @@ function guideForCampaign(campaign: string | null): { file: string; title: strin
   return DEFAULT_GUIDE
 }
 
-function validUkPhone(p: string) {
-  const c = (p || '').replace(/[\s\-()]/g, '')
-  return /^(07\d{9}|01\d{8,9}|02\d{9}|03\d{9}|0800\d{6,7}|\+447\d{9})$/.test(c)
-}
+// Phone validation lives in ./phone — libphonenumber plus an optional carrier
+// lookup. Do not re-add a regex here: the old one accepted landlines and
+// placeholder numbers like 07342000000, which wasted the caller's time.
 
 function envOrNull() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -66,6 +67,7 @@ export async function runLeadAutomation(leadId: number | string) {
   const guide = guideForCampaign(lead.campaign)
   const summary = {
     ok: true, leadId: lead.id, guideEmailed: false, phoneValid: false,
+    phoneReason: null as string | null, firstCallDue: null as string | null,
     whatsapp: 'skipped' as string, adminAlerted: false, callersNotified: 0, adminsNotified: 0,
   }
 
@@ -99,11 +101,34 @@ export async function runLeadAutomation(leadId: number | string) {
           </div>`,
       })
       summary.guideEmailed = true
+      await supabaseAdmin.from('leads').update({ guide_sent_at: new Date().toISOString() }).eq('id', lead.id)
     } catch { /* best-effort */ }
   }
 
-  // 2 ─ Phone validation → WhatsApp confirmation if valid, admin alert if not
-  summary.phoneValid = validUkPhone(lead.phone)
+  // 2 ─ Phone validation. A good number goes onto the call schedule; a bad one
+  //     is parked so it never reaches the caller, and the admin is alerted.
+  const verdict = await verifyPhone(lead.phone ?? '')
+  summary.phoneValid = verdict.ok
+  summary.phoneReason = verdict.reason ?? null
+
+  await supabaseAdmin.from('leads').update({
+    phone_e164: verdict.e164,
+    phone_type: verdict.type,
+    phone_valid: verdict.ok,
+    ...(verdict.ok
+      ? { parked_at: null, parked_reason: null }
+      : { parked_at: new Date().toISOString(), parked_reason: verdict.reason ?? 'Number failed validation' }),
+  }).eq('id', lead.id)
+
+  if (verdict.ok) {
+    try {
+      const row = await openInitialSchedule(lead.id)
+      summary.firstCallDue = row?.due_on ?? null
+    } catch (e) {
+      console.error('[lead-automation] could not open schedule:', (e as Error).message)
+    }
+  }
+
   if (summary.phoneValid) {
     const wa = await sendWhatsApp({ toPhone: lead.phone, leadName: lead.first_name || 'there', guideTitle: guide.title })
     summary.whatsapp = wa.skipped ? 'not configured' : wa.ok ? 'sent' : `failed: ${wa.error}`
@@ -119,8 +144,9 @@ export async function runLeadAutomation(leadId: number | string) {
             <h2 style="margin:0 0 12px;font-size:19px;color:#b91c1c">⚠ Lead has an invalid phone number</h2>
             <p style="font-size:14px;margin:0 0 8px"><strong>${fullName}</strong></p>
             <p style="font-size:13px;color:#334155;margin:0 0 4px">Phone on file: <code>${lead.phone ?? '—'}</code></p>
-            <p style="font-size:13px;color:#334155;margin:0 0 20px">No WhatsApp confirmation was sent. Please review and correct the number.</p>
-            <a href="${leadLink}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;font-weight:600;font-size:14px;padding:11px 22px;border-radius:8px">Open this lead in the CRM →</a>
+            <p style="font-size:13px;color:#334155;margin:0 0 4px">Reason: <strong>${summary.phoneReason ?? 'failed validation'}</strong></p>
+            <p style="font-size:13px;color:#334155;margin:0 0 20px">This lead is <strong>parked</strong> — it is hidden from the caller and no callback has been scheduled. Add a working number to put it back in the queue, or discard it.</p>
+            <a href="${env.appUrl}/crm?tab=parked" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;font-weight:600;font-size:14px;padding:11px 22px;border-radius:8px">Open parked leads →</a>
           </div>`,
       })
       summary.adminAlerted = true

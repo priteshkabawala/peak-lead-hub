@@ -7,6 +7,9 @@ import CallerManagement from '@/components/CallerManagement'
 import CallerWorkspace from '@/components/CallerWorkspace'
 import CallerDashboard from '@/components/CallerDashboard'
 import ParkedLeads from '@/components/ParkedLeads'
+import AdminBoard from '@/components/AdminBoard'
+import CalendarView from '@/components/CalendarView'
+import BookCall from '@/components/BookCall'
 import AuditLogView from '@/components/AuditLog'
 import LinkedInAdmin from '@/components/LinkedInAdmin'
 
@@ -82,7 +85,7 @@ function senTag(sen?: string | null) {
 
 // ── types ─────────────────────────────────────────────────────────────────────
 
-type Tab = 'dashboard' | 'today' | 'leads' | 'caller' | 'add' | 'strategy' | 'callers_admin' | 'audit_admin' | 'linkedin_admin' | 'parked_admin'
+type Tab = 'dashboard' | 'today' | 'leads' | 'caller' | 'add' | 'strategy' | 'calendar' | 'book' | 'callers_admin' | 'audit_admin' | 'linkedin_admin' | 'parked_admin' | 'board_admin'
 type CallerTab = 'today' | 'leads'
 
 interface FormState {
@@ -106,6 +109,9 @@ export default function Home() {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [authLoading, setAuthLoading] = useState(true)
   const [tab, setTab] = useState<Tab>('dashboard')
+  // Lead being booked, plus the tab to return to when the booking screen closes.
+  const [bookLeadId, setBookLeadId] = useState<number | null>(null)
+  const [bookReturn, setBookReturn] = useState<Tab>('board_admin')
   const [callerTab, setCallerTab] = useState<CallerTab>('today')
   const [leads, setLeads] = useState<Lead[]>([])
   const [loading, setLoading] = useState(true)
@@ -180,6 +186,8 @@ export default function Home() {
     if (profile?.role !== 'admin') return
     const t = new URLSearchParams(window.location.search).get('tab')
     if (t === 'linkedin_admin') setTab('linkedin_admin')
+    else if (t === 'parked') setTab('parked_admin')
+    else if (t === 'board') setTab('board_admin')
   }, [profile])
 
   // Deep link: /crm?lead=<id> (from admin alert emails) opens that lead's details.
@@ -382,7 +390,7 @@ export default function Home() {
           </div>
         </nav>
         {callerTab === 'today'
-          ? <CallerDashboard currentUser={profile} onNotif={showNotif} />
+          ? <CallerDashboard currentUser={profile} onNotif={showNotif} onBook={id => { setBookReturn(tab); setBookLeadId(id); setTab('book') }} />
           : <CallerWorkspace currentUser={profile} onNotif={showNotif} />}
       </>
     )
@@ -400,12 +408,13 @@ export default function Home() {
       {/* Nav */}
       <nav className="nav">
         <div className="brand">PeaK <span>Lead Hub</span> <em>Peak Personal Finance</em></div>
-        {(['dashboard','today','leads','caller','add','strategy'] as Tab[]).map((t, i) => {
-          const labels = ['📊 Dashboard','📋 Today','👥 All Leads','📞 Caller View','➕ Add Lead','🎯 Strategy']
+        {(['dashboard','today','calendar','leads','caller','add','strategy'] as Tab[]).map((t, i) => {
+          const labels = ['📊 Dashboard','📋 Today','📅 Calendar','👥 All Leads','📞 Caller View','➕ Add Lead','🎯 Strategy']
           return <button key={t} className={`nav-btn${tab===t?' active':''}`} onClick={() => setTab(t)}>{labels[i]}</button>
         })}
         {profile?.role === 'admin' && <>
           <div style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 4px' }} />
+          <button className={`nav-btn${tab==='board_admin'?' active':''}`} onClick={() => setTab('board_admin')}>🗂 Board</button>
           <button className={`nav-btn${tab==='callers_admin'?' active':''}`} onClick={() => setTab('callers_admin')}>👤 Callers</button>
           <button className={`nav-btn${tab==='audit_admin'?' active':''}`} onClick={() => setTab('audit_admin')}>📋 Audit Log</button>
           <button className={`nav-btn${tab==='parked_admin'?' active':''}`} onClick={() => setTab('parked_admin')}>🅿️ Parked</button>
@@ -608,7 +617,7 @@ export default function Home() {
       </div>
 
       {/* ── TODAY'S CALL QUEUE (admin can work or supervise the queue) ──────── */}
-      {tab === 'today' && profile && <CallerDashboard currentUser={profile} onNotif={showNotif} />}
+      {tab === 'today' && profile && <CallerDashboard currentUser={profile} onNotif={showNotif} onBook={id => { setBookReturn(tab); setBookLeadId(id); setTab('book') }} />}
 
       {/* ── CALLER WORKSPACE (admins can call too) ──────────────────────────── */}
       {tab === 'caller' && profile && <CallerWorkspace currentUser={profile} onNotif={showNotif} />}
@@ -853,6 +862,26 @@ export default function Home() {
           </div>
         </div>
       </div>
+
+      {/* ── CALENDAR ──────────────────────────────────────────────────────── */}
+      {tab === 'calendar' && profile && (
+        <CalendarView currentUser={profile} onNotif={showNotif}
+          onOpenLead={id => { setBookReturn('calendar'); setBookLeadId(id); setTab('book') }} />
+      )}
+
+      {/* ── BOOK A CALL ───────────────────────────────────────────────────── */}
+      {tab === 'book' && profile && bookLeadId != null && (
+        <BookCall leadId={bookLeadId} currentUser={profile} onNotif={showNotif}
+          onBack={() => { setBookLeadId(null); setTab(bookReturn) }}
+          onBooked={fetchLeads} />
+      )}
+
+      {/* ── ADMIN: BOARD ──────────────────────────────────────────────────── */}
+      {tab === 'board_admin' && profile?.role === 'admin' && (
+        <AdminBoard currentUser={profile} onNotif={showNotif}
+          onOpenLead={id => { setBookReturn('board_admin'); setBookLeadId(id); setTab('book') }}
+          onGoParked={() => setTab('parked_admin')} />
+      )}
 
       {/* ── ADMIN: CALLERS ────────────────────────────────────────────────── */}
       {tab === 'callers_admin' && profile?.role === 'admin' && (
