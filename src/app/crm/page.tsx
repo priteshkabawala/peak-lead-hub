@@ -6,6 +6,7 @@ import { supabase, logAudit, type Lead, type Profile, type LeadPrivate } from '@
 import CallerManagement from '@/components/CallerManagement'
 import CallerWorkspace from '@/components/CallerWorkspace'
 import CallerDashboard from '@/components/CallerDashboard'
+import ParkedLeads from '@/components/ParkedLeads'
 import AuditLogView from '@/components/AuditLog'
 import LinkedInAdmin from '@/components/LinkedInAdmin'
 
@@ -81,7 +82,7 @@ function senTag(sen?: string | null) {
 
 // ── types ─────────────────────────────────────────────────────────────────────
 
-type Tab = 'dashboard' | 'today' | 'leads' | 'caller' | 'add' | 'strategy' | 'callers_admin' | 'audit_admin' | 'linkedin_admin'
+type Tab = 'dashboard' | 'today' | 'leads' | 'caller' | 'add' | 'strategy' | 'callers_admin' | 'audit_admin' | 'linkedin_admin' | 'parked_admin'
 type CallerTab = 'today' | 'leads'
 
 interface FormState {
@@ -407,6 +408,7 @@ export default function Home() {
           <div style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 4px' }} />
           <button className={`nav-btn${tab==='callers_admin'?' active':''}`} onClick={() => setTab('callers_admin')}>👤 Callers</button>
           <button className={`nav-btn${tab==='audit_admin'?' active':''}`} onClick={() => setTab('audit_admin')}>📋 Audit Log</button>
+          <button className={`nav-btn${tab==='parked_admin'?' active':''}`} onClick={() => setTab('parked_admin')}>🅿️ Parked</button>
           <button className={`nav-btn${tab==='linkedin_admin'?' active':''}`} onClick={() => setTab('linkedin_admin')}>💼 LinkedIn</button>
         </>}
         <div className="nav-right">
@@ -860,6 +862,11 @@ export default function Home() {
       {/* ── ADMIN: AUDIT LOG ──────────────────────────────────────────────── */}
       {tab === 'audit_admin' && profile?.role === 'admin' && (
         <AuditLogView />
+      )}
+
+      {/* ── ADMIN: PARKED LEADS ──────────────────────────────────────────── */}
+      {tab === 'parked_admin' && profile?.role === 'admin' && (
+        <ParkedLeads currentUser={profile} onNotif={showNotif} />
       )}
 
       {/* ── ADMIN: LINKEDIN LEAD SYNC ────────────────────────────────────── */}

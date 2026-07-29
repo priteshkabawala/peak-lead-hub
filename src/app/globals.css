@@ -358,3 +358,26 @@ textarea { resize: vertical; }
  .cd-btn{padding:11px;font-size:14px;text-align:center}
  .cd-og{grid-template-columns:1fr}
 }
+
+/* ── Parked leads (approved variant A: triage table) ───────────────────── */
+.chip-amber{font-size:12px;font-weight:700;padding:4px 11px;border-radius:16px;background:#fff4e5;color:#b26b00}
+.pk-banner{background:#fff8ed;border:1px solid #ffe2b8;border-radius:9px;padding:11px 15px;font-size:13px;color:#8a5a00;display:flex;gap:9px;align-items:flex-start;line-height:1.5;margin:12px 0 20px}
+.pk-sub{font-size:11.5px;color:var(--muted);font-weight:600;margin-top:1px}
+.pk-old{font-weight:700;color:#e2445c;text-decoration:line-through;font-variant-numeric:tabular-nums;font-size:12.5px}
+.pk-rsn{display:inline-block;font-size:11.5px;font-weight:800;padding:4px 10px;border-radius:6px}
+table.pk td{padding:10px 12px;vertical-align:middle}
+table.pk tbody tr{border-left:4px solid #fdab3d}
+table.pk tbody tr:hover{background:#fffdf8}
+table.pk input[type=tel]{padding:8px 10px;font-size:13px;font-variant-numeric:tabular-nums}
+.pk-acts{display:flex;gap:5px;justify-content:flex-end;flex-wrap:wrap}
+.pk-del{background:#fff;border:1px solid #ffd0d8;color:#e2445c;padding:6px 12px;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit}
+.pk-del:hover{background:#fff5f6}
+.pk-del:disabled,.cd-btn:disabled{opacity:.45;cursor:not-allowed}
+@media(max-width:900px){
+ table.pk thead{display:none}
+ table.pk,table.pk tbody,table.pk tr,table.pk td{display:block;width:100%}
+ table.pk tbody tr{background:#fff;border-radius:10px;margin-bottom:10px;padding:13px;box-shadow:0 1px 3px rgba(0,0,0,.07)}
+ table.pk td{border:none!important;padding:4px 0!important}
+ .pk-acts{justify-content:stretch}
+ .pk-acts>*{flex:1;text-align:center}
+}
