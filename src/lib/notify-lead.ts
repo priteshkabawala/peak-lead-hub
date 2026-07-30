@@ -32,6 +32,91 @@ function guideForCampaign(campaign: string | null): { file: string; title: strin
 // lookup. Do not re-add a regex here: the old one accepted landlines and
 // placeholder numbers like 07342000000, which wasted the caller's time.
 
+// Signature block on the guide email. Kept here rather than inline so the
+// details can be corrected without touching the template.
+const SENDER = {
+  name: process.env.LEAD_EMAIL_SENDER_NAME || 'Reece Hogan',
+  // The email says "Email me", so this address must be a real inbox someone
+  // reads — it is also set as Reply-To, since we send from noreply@.
+  email: process.env.LEAD_EMAIL_REPLY_TO || 'info@mypensionadvisor.co.uk',
+  landline: process.env.LEAD_EMAIL_LANDLINE || '03302-235-034',
+  whatsapp: process.env.LEAD_EMAIL_WHATSAPP || '07877-651-518',
+  address: process.env.LEAD_EMAIL_ADDRESS || 'First Floor, 85 Great Portland St, London W1W 7LT',
+}
+
+/**
+ * The free-guide email sent to the prospect. Copy supplied by Pritesh.
+ *
+ * Written with inline styles and no flexbox/grid: Outlook and older clients
+ * ignore modern layout, so this stays as plain stacked blocks.
+ *
+ * Exported so it can be previewed and unit-tested without sending anything.
+ */
+export function guideEmailHtml(opts: { firstName: string | null; bookingUrl: string }): string {
+  const greeting = opts.firstName?.trim() ? `Hi ${opts.firstName.trim()},` : 'Hi.'
+  const li = 'font-size:14px;line-height:1.55;margin:0 0 7px'
+  const p = 'font-size:14px;line-height:1.6;margin:0 0 15px'
+  const ask = 'font-size:14px;line-height:1.6;margin:0 0 10px;font-weight:600'
+
+  // Only linked when a scheduling URL is configured; a dead "click here" is
+  // worse than plain text.
+  const clickHere = opts.bookingUrl
+    ? `<a href="${opts.bookingUrl}" style="color:#1d4ed8;font-weight:600">click here</a>`
+    : 'click here'
+
+  return `
+  <div style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;max-width:560px;margin:0 auto;padding:32px 28px;background:#fff;color:#0f172a;border:1px solid #e3e8f0;border-radius:12px">
+    <h2 style="margin:0 0 4px;font-size:21px">Your free guide is here 📘</h2>
+    <p style="color:#64748b;font-size:13px;margin:0 0 22px">Peak Personal Finance</p>
+
+    <p style="${p}">${greeting} Thank you for requesting our Guide!</p>
+
+    <p style="${p}">
+      Our representative may contact you shortly to enquire if you have any questions regarding
+      the Pension Guide. This call presents an excellent opportunity for you to discover how we
+      can assist in addressing your financial needs in:
+    </p>
+
+    <ul style="margin:0 0 15px;padding-left:22px;color:#0f172a">
+      <li style="${li}">Pension planning, including investing and estate planning.</li>
+      <li style="${li}">Finding an adviser who puts you first.</li>
+      <li style="${li}">Aligning your investments and retirement goals.</li>
+    </ul>
+
+    <p style="${ask}">Are you prepared to discover how we can assist you in achieving a comfortable retirement?</p>
+
+    <p style="${p}">
+      <a href="mailto:${SENDER.email}" style="color:#1d4ed8;font-weight:600">Email me</a>
+      or ${clickHere} to schedule an in-depth meeting with your qualified professional.
+      We&rsquo;ll help you answer important questions such as:
+    </p>
+
+    <ul style="margin:0 0 20px;padding-left:22px;color:#0f172a">
+      <li style="${li}">Is your portfolio positioned to meet your goals?</li>
+      <li style="${li}">Will you have enough throughout retirement?</li>
+      <li style="${li}">How can you generate income to maintain your lifestyle?</li>
+    </ul>
+
+    ${opts.bookingUrl ? `
+    <p style="margin:0 0 24px">
+      <a href="${opts.bookingUrl}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;font-weight:700;font-size:15px;padding:13px 26px;border-radius:8px">Book your meeting →</a>
+    </p>` : ''}
+
+    <p style="${p};margin-bottom:4px">Kind Regards</p>
+    <p style="font-size:15px;font-weight:700;margin:0 0 12px">${SENDER.name}</p>
+
+    <p style="font-size:13px;line-height:1.7;color:#334155;margin:0">
+      Landline ${SENDER.landline}<br>
+      WhatsApp ${SENDER.whatsapp}<br>
+      ${SENDER.address}
+    </p>
+
+    <p style="font-size:12px;color:#94a3b8;margin:22px 0 0;border-top:1px solid #e3e8f0;padding-top:14px">
+      Peak Personal Finance · mypensionadvisor.co.uk
+    </p>
+  </div>`
+}
+
 function envOrNull() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -84,21 +169,12 @@ export async function runLeadAutomation(leadId: number | string) {
         from: FROM_CLIENT,
         to: [lead.email],
         subject: `Your free guide: ${guide.title}`,
+        replyTo: SENDER.email,
         attachments: [{ filename: guide.file, path: `${env.appUrl}/guides/${guide.file}` }],
-        html: `
-          <div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;padding:32px 26px;background:#fff;color:#0f172a;border:1px solid #e3e8f0;border-radius:12px">
-            <h2 style="margin:0 0 4px;font-size:21px">Your free guide is here 📘</h2>
-            <p style="color:#64748b;font-size:13px;margin:0 0 20px">Peak Personal Finance</p>
-            <p style="font-size:14px;margin:0 0 16px">Hi ${lead.first_name ?? 'there'},</p>
-            <p style="font-size:14px;line-height:1.6;margin:0 0 16px">
-              Thanks for requesting <strong>${guide.title}</strong> — it's attached to this email as a PDF.
-              We hope you find it genuinely useful.
-            </p>
-            <p style="font-size:14px;line-height:1.6;margin:0 0 16px">
-              One of our advisers may reach out shortly to answer any questions about your pension.
-            </p>
-            <p style="font-size:12px;color:#94a3b8;margin:22px 0 0">Peak Personal Finance · mypensionadvisor.co.uk</p>
-          </div>`,
+        html: guideEmailHtml({
+          firstName: lead.first_name ?? null,
+          bookingUrl: process.env.NEXT_PUBLIC_CALENDLY_URL || '',
+        }),
       })
       summary.guideEmailed = true
       await supabaseAdmin.from('leads').update({ guide_sent_at: new Date().toISOString() }).eq('id', lead.id)
