@@ -5,7 +5,9 @@ import { verifyPhone } from './phone'
 import { openInitialSchedule } from './schedule'
 
 const FROM_BRAND = 'PeaK Lead Hub <noreply@mypensionadvisor.co.uk>'
-const FROM_CLIENT = 'Peak Personal Finance <noreply@mypensionadvisor.co.uk>'
+// Prospect-facing sender. This is the name that shows in the lead's inbox, so
+// it is the trading name they recognise from the campaign, not the CRM's.
+const FROM_CLIENT = 'My Pension Advisor <noreply@mypensionadvisor.co.uk>'
 
 // Campaign → free-guide PDF (files live in /public/guides — see that README).
 // Matched by KEYWORD against the LinkedIn campaign name (not exact-match), so
@@ -66,8 +68,7 @@ export function guideEmailHtml(opts: { firstName: string | null; bookingUrl: str
 
   return `
   <div style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;max-width:560px;margin:0 auto;padding:32px 28px;background:#fff;color:#0f172a;border:1px solid #e3e8f0;border-radius:12px">
-    <h2 style="margin:0 0 4px;font-size:21px">Your free guide is here 📘</h2>
-    <p style="color:#64748b;font-size:13px;margin:0 0 22px">Peak Personal Finance</p>
+    <h2 style="margin:0 0 22px;font-size:21px">Your free guide is here 📘</h2>
 
     <p style="${p}">${greeting} Thank you for requesting our Guide!</p>
 
@@ -112,7 +113,7 @@ export function guideEmailHtml(opts: { firstName: string | null; bookingUrl: str
     </p>
 
     <p style="font-size:12px;color:#94a3b8;margin:22px 0 0;border-top:1px solid #e3e8f0;padding-top:14px">
-      Peak Personal Finance · mypensionadvisor.co.uk
+      mypensionadvisor.co.uk
     </p>
   </div>`
 }

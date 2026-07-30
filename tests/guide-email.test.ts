@@ -55,6 +55,17 @@ describe('copy', () => {
     expect(html).not.toContain('One of our advisers may reach out')
     expect(html).not.toContain('genuinely useful')
   })
+
+  // The prospect knows the business as My Pension Advisor, from the campaign
+  // and the domain. The CRM's own branding must not leak into their inbox.
+  it('does not mention Peak Personal Finance or the CRM', () => {
+    expect(html).not.toMatch(/peak/i)
+    expect(html).not.toMatch(/lead hub/i)
+  })
+
+  it('still identifies the sender by domain', () => {
+    expect(html).toContain('mypensionadvisor.co.uk')
+  })
 })
 
 describe('the booking link', () => {
