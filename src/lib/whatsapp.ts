@@ -5,7 +5,38 @@
 // Business-initiated WhatsApp messages MUST use a Meta-approved template, so
 // both paths send a template message with variables {{1}}=name, {{2}}=guide.
 
-export type WhatsAppResult = { ok: boolean; provider?: string; id?: string; error?: string; skipped?: boolean }
+export type WhatsAppResult = {
+  ok: boolean
+  provider?: string
+  id?: string
+  error?: string
+  skipped?: boolean
+  // Meta's numeric code is the only part that identifies the fault (131030 =
+  // recipient not allow-listed, 133010 = number not registered, 190 = bad
+  // token). Dropping it made every failure look the same.
+  code?: number
+  subcode?: number
+  details?: string
+  trace?: string
+}
+
+/** Plain-English meaning for the Meta error codes this integration hits. */
+export function explainMetaCode(code?: number): string | null {
+  switch (code) {
+    case 190: return 'Access token is invalid or expired — generate a permanent System User token.'
+    case 131030: return 'Recipient is not in the test number allow-list. Register a real production number, or add this recipient.'
+    case 133010: return 'Phone number is not registered for Cloud API — complete registration in WhatsApp Manager.'
+    case 133005: return 'Two-step verification PIN is required or wrong for this number.'
+    case 132000: return 'Template variable count does not match the approved template (this one expects 2).'
+    case 132001: return 'Template name or language does not exist in this WhatsApp Business Account.'
+    case 132015: return 'Template is paused or disabled by Meta.'
+    case 131047: return 'Outside the 24-hour window — only approved templates may be sent (this code does send a template).'
+    case 200:
+    case 10: return 'Token lacks permission. The System User needs whatsapp_business_messaging and the WABA assigned as an asset.'
+    case 131056: return 'Too many messages to this recipient recently — try a different number.'
+    default: return null
+  }
+}
 
 // Normalise a UK phone number to E.164 (+44…). Returns null if it can't.
 export function toE164UK(raw: string): string | null {
@@ -99,6 +130,17 @@ async function sendViaMeta(to: string, name: string, guide: string): Promise<Wha
     }),
   })
   const json = await res.json().catch(() => ({}))
-  if (!res.ok) return { ok: false, provider: 'meta', error: json?.error?.message || `HTTP ${res.status}` }
+  if (!res.ok) {
+    const e = json?.error ?? {}
+    return {
+      ok: false,
+      provider: 'meta',
+      error: e.message || `HTTP ${res.status}`,
+      code: e.code,
+      subcode: e.error_subcode,
+      details: e.error_data?.details,
+      trace: e.fbtrace_id,
+    }
+  }
   return { ok: true, provider: 'meta', id: json?.messages?.[0]?.id }
 }
