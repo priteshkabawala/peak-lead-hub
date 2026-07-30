@@ -90,6 +90,17 @@ describe('the booking link', () => {
       expect(guideEmailHtml({ firstName: 'Sneha', bookingUrl: url })).toMatch(/<a href="mailto:[^"]+"/)
     }
   })
+
+  // "Email me" is signed by Reece, so it must reach Reece — and it has to be
+  // right even when LEAD_EMAIL_REPLY_TO is unset, which is how it shipped
+  // pointing at a placeholder inbox.
+  // The signature block is read once at import, so this asserts the compiled-in
+  // default that applies when LEAD_EMAIL_REPLY_TO is absent.
+  it('points "Email me" at Reece by default', () => {
+    const html = guideEmailHtml({ firstName: 'Sneha', bookingUrl: CAL })
+    expect(html).toContain('mailto:reece@mypensionadvisor.co.uk')
+    expect(html).not.toContain('info@mypensionadvisor.co.uk')
+  })
 })
 
 describe('email-client safety', () => {

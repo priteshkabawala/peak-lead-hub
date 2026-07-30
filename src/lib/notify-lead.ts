@@ -40,7 +40,7 @@ const SENDER = {
   name: process.env.LEAD_EMAIL_SENDER_NAME || 'Reece Hogan',
   // The email says "Email me", so this address must be a real inbox someone
   // reads — it is also set as Reply-To, since we send from noreply@.
-  email: process.env.LEAD_EMAIL_REPLY_TO || 'info@mypensionadvisor.co.uk',
+  email: process.env.LEAD_EMAIL_REPLY_TO || 'reece@mypensionadvisor.co.uk',
   landline: process.env.LEAD_EMAIL_LANDLINE || '03302-235-034',
   whatsapp: process.env.LEAD_EMAIL_WHATSAPP || '07877-651-518',
   address: process.env.LEAD_EMAIL_ADDRESS || 'First Floor, 85 Great Portland St, London W1W 7LT',
