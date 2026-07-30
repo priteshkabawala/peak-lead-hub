@@ -91,7 +91,53 @@ export async function GET(req: Request) {
     problems.push(`Could not reach Meta: ${(e as Error).message}`)
   }
 
-  // 2 ─ Is the template approved, under this WABA, in this language?
+  // 2 ─ What numbers exist on this WABA, and what is each one's ID and state?
+  //     This is how you find the Phone Number ID to put in the env var, and
+  //     whether a number is merely verified or actually registered.
+  if (wabaId) {
+    try {
+      const res = await fetch(
+        `${GRAPH}/${wabaId}/phone_numbers?fields=id,display_phone_number,verified_name,code_verification_status,platform_type,status,quality_rating`,
+        { headers: { Authorization: `Bearer ${token}` } })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        report.wabaNumbers = { error: json?.error?.message, code: json?.error?.code }
+        problems.push(`Could not list numbers on WABA ${wabaId}: ${json?.error?.message}`)
+      } else {
+        const nums = (json.data ?? []) as Array<Record<string, unknown>>
+        report.wabaNumbers = nums.map(n => ({
+          phoneNumberId: n.id,
+          display: n.display_phone_number,
+          verifiedName: n.verified_name,
+          verification: n.code_verification_status,
+          platform: n.platform_type,
+          status: n.status,
+          isCurrentlyConfigured: n.id === phoneNumberId,
+        }))
+        const live = nums.find(n => String(n.display_phone_number ?? '').replace(/\D/g, '').endsWith('7877651518'))
+        if (live) {
+          report.ukNumber = {
+            phoneNumberId: live.id,
+            verification: live.code_verification_status,
+            platform: live.platform_type,
+            status: live.status,
+          }
+          if (live.id !== phoneNumberId) {
+            problems.push(`The UK number exists with Phone Number ID ${live.id}, but WHATSAPP_META_PHONE_NUMBER_ID is still ${phoneNumberId}. Swap it and redeploy.`)
+          }
+          if (live.platform_type !== 'CLOUD_API') {
+            problems.push(`UK number is not registered for Cloud API yet (platform: ${live.platform_type ?? 'none'}). Use Register in WhatsApp Manager and set a 6-digit two-step PIN.`)
+          }
+        } else {
+          problems.push('No number ending 7877651518 found on this WABA — add and verify it first.')
+        }
+      }
+    } catch (e) {
+      problems.push(`Number listing failed: ${(e as Error).message}`)
+    }
+  }
+
+  // 3 ─ Is the template approved, under this WABA, in this language?
   if (wabaId) {
     try {
       const res = await fetch(
