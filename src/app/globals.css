@@ -487,3 +487,17 @@ select.cd-f { font-family: inherit; }
   .bc-acts { grid-template-columns: 1fr; }
   .bc-slot { flex-wrap: wrap; }
 }
+
+/* ── Guide-email A/B test panel (.ab-ab-*) ────────────────────────────── */
+.ab-ab { background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,.05); padding: 15px 17px; margin-bottom: 22px; }
+.ab-ab-h { font-size: 13.5px; font-weight: 800; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 13px; }
+.ab-ab-h span { font-size: 11.5px; font-weight: 600; color: #9699a6; }
+.ab-ab-g { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 11px; }
+.ab-ab-c { border: 1.5px solid #e6e9ef; border-radius: 9px; padding: 12px 14px; }
+.ab-ab-c.win { border-color: #00c875; background: #f6fffb; }
+.ab-ab-n { font-size: 12.5px; font-weight: 800; margin-bottom: 9px; display: flex; align-items: center; gap: 7px; }
+.ab-ab-n em { font-style: normal; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .5px; background: #00c875; color: #fff; padding: 2px 7px; border-radius: 10px; }
+.ab-ab-r { display: flex; justify-content: space-between; font-size: 13px; padding: 3px 0; }
+.ab-ab-r b { font-weight: 800; font-variant-numeric: tabular-nums; }
+.ab-ab-r.sub { color: #9699a6; font-size: 12px; border-top: 1px solid #f2f3f6; margin-top: 4px; padding-top: 6px; }
+.ab-ab-warn { font-size: 11px; font-weight: 700; color: #b26b00; background: #fff8ed; border-radius: 5px; padding: 5px 8px; margin-top: 9px; }

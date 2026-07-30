@@ -1,113 +1,89 @@
 import { describe, it, expect } from 'vitest'
-import { guideEmailHtml } from '@/lib/notify-lead'
+import { guideEmailHtml, variantForLead, type EmailVariant } from '@/lib/notify-lead'
 
-// This email is the only thing every prospect definitely receives, so the copy
-// and the booking link are pinned here.
+// This email is the only thing every prospect definitely receives. Two variants
+// are under test, so the invariants below must hold for BOTH — a bug that only
+// affects one arm would quietly skew the result.
 
-const CAL = 'https://calendly.com/pritesh-kabawala-wealthplanner'
+const CAL = 'https://crm.mypensionadvisor.co.uk/api/e/book?l=42'
+const VARIANTS: EmailVariant[] = ['B', 'D']
+const render = (v: EmailVariant, over: Record<string, unknown> = {}) =>
+  guideEmailHtml({ firstName: 'Sneha', bookingUrl: CAL, variant: v, ...over })
 
-describe('greeting', () => {
-  it('uses the first name when LinkedIn gave us one', () => {
-    expect(guideEmailHtml({ firstName: 'Sneha', bookingUrl: CAL })).toContain('Hi Sneha, Thank you for requesting our Guide!')
+describe('variant assignment', () => {
+  it('splits evenly by lead id parity', () => {
+    expect(variantForLead(42)).toBe('B')
+    expect(variantForLead(43)).toBe('D')
   })
 
-  it('falls back to a plain greeting when there is no name', () => {
-    for (const n of [null, '', '   ']) {
-      const html = guideEmailHtml({ firstName: n, bookingUrl: CAL })
-      expect(html).toContain('Hi. Thank you for requesting our Guide!')
-      expect(html).not.toContain('Hi ,')
-      expect(html).not.toContain('undefined')
-      expect(html).not.toContain('null')
+  // A resend must never show one person a different email.
+  it('is stable for a given lead', () => {
+    for (const id of [1, 2, 77, 512]) {
+      expect(variantForLead(id)).toBe(variantForLead(id))
     }
   })
 
-  it('trims a padded name rather than printing the padding', () => {
-    expect(guideEmailHtml({ firstName: '  Sneha  ', bookingUrl: CAL })).toContain('Hi Sneha,')
+  it('stays balanced across a realistic run of leads', () => {
+    const counts = { B: 0, D: 0 }
+    for (let id = 1; id <= 200; id++) counts[variantForLead(id)]++
+    expect(counts.B).toBe(100)
+    expect(counts.D).toBe(100)
+  })
+
+  it('defaults to B when no variant is passed', () => {
+    expect(guideEmailHtml({ firstName: 'Sneha', bookingUrl: CAL }))
+      .toBe(render('B'))
   })
 })
 
-describe('copy', () => {
-  const html = guideEmailHtml({ firstName: 'Sneha', bookingUrl: CAL })
+describe.each(VARIANTS)('variant %s — invariants', v => {
+  const html = render(v)
 
-  it.each([
-    'Our representative may contact you shortly',
-    'Pension planning, including investing and estate planning.',
-    'Finding an adviser who puts you first.',
-    'Aligning your investments and retirement goals.',
-    'Are you prepared to discover how we can assist you in achieving a comfortable retirement?',
-    'schedule an in-depth meeting with your qualified professional',
-    'Is your portfolio positioned to meet your goals?',
-    'Will you have enough throughout retirement?',
-    'How can you generate income to maintain your lifestyle?',
-    'Kind Regards',
-  ])('includes %s', line => {
-    expect(html).toContain(line)
+  it('greets the lead by first name', () => {
+    expect(html).toContain('Sneha')
   })
 
-  it('carries the signature block', () => {
+  it('handles a missing name without printing a stray comma or null', () => {
+    for (const n of [null, '', '   ']) {
+      const h = render(v, { firstName: n })
+      expect(h).not.toContain('Hi ,')
+      expect(h).not.toContain('undefined')
+      expect(h).not.toContain('null')
+    }
+  })
+
+  it('links the booking URL', () => {
+    expect(html).toContain(`href="${CAL}"`)
+  })
+
+  // A dead link reads as a broken email, so each variant has a fallback.
+  it('degrades without a dead link when no URL is configured', () => {
+    const h = render(v, { bookingUrl: '' })
+    expect(h).not.toContain('href=""')
+    expect(h).not.toMatch(/href="\s*"/)
+  })
+
+  it('still offers a way to respond when there is no booking URL', () => {
+    const h = render(v, { bookingUrl: '' })
+    expect(h.toLowerCase()).toMatch(/repl(y|ies)|email me/)
+  })
+
+  it('carries the signature', () => {
     expect(html).toContain('Reece Hogan')
     expect(html).toContain('03302-235-034')
     expect(html).toContain('07877-651-518')
-    expect(html).toContain('85 Great Portland St')
   })
 
-  it('no longer contains the copy this replaced', () => {
-    expect(html).not.toContain('One of our advisers may reach out')
-    expect(html).not.toContain('genuinely useful')
-  })
-
-  // The prospect knows the business as My Pension Advisor, from the campaign
-  // and the domain. The CRM's own branding must not leak into their inbox.
-  it('does not mention Peak Personal Finance or the CRM', () => {
+  it('never leaks CRM branding to the prospect', () => {
     expect(html).not.toMatch(/peak/i)
     expect(html).not.toMatch(/lead hub/i)
   })
 
-  it('still identifies the sender by domain', () => {
+  it('identifies the sender by domain', () => {
     expect(html).toContain('mypensionadvisor.co.uk')
   })
-})
 
-describe('the booking link', () => {
-  it('links "click here" and shows a button when a URL is configured', () => {
-    const html = guideEmailHtml({ firstName: 'Sneha', bookingUrl: CAL })
-    expect(html).toContain(`<a href="${CAL}"`)
-    expect(html).toContain('>click here</a>')
-    expect(html).toContain('Book your meeting')
-  })
-
-  // A "click here" that goes nowhere reads as a broken email.
-  it('degrades to plain text when no URL is configured', () => {
-    const html = guideEmailHtml({ firstName: 'Sneha', bookingUrl: '' })
-    expect(html).toContain('click here')
-    expect(html).not.toContain('>click here</a>')
-    expect(html).not.toContain('Book your meeting')
-    expect(html).not.toContain('href=""')
-  })
-
-  it('always offers an email route, since the copy says "Email me"', () => {
-    for (const url of [CAL, '']) {
-      expect(guideEmailHtml({ firstName: 'Sneha', bookingUrl: url })).toMatch(/<a href="mailto:[^"]+"/)
-    }
-  })
-
-  // "Email me" is signed by Reece, so it must reach Reece — and it has to be
-  // right even when LEAD_EMAIL_REPLY_TO is unset, which is how it shipped
-  // pointing at a placeholder inbox.
-  // The signature block is read once at import, so this asserts the compiled-in
-  // default that applies when LEAD_EMAIL_REPLY_TO is absent.
-  it('points "Email me" at Reece by default', () => {
-    const html = guideEmailHtml({ firstName: 'Sneha', bookingUrl: CAL })
-    expect(html).toContain('mailto:reece@mypensionadvisor.co.uk')
-    expect(html).not.toContain('info@mypensionadvisor.co.uk')
-  })
-})
-
-describe('email-client safety', () => {
-  const html = guideEmailHtml({ firstName: 'Sneha', bookingUrl: CAL })
-
-  // Outlook ignores these, which would collapse the layout.
-  it('avoids flexbox and grid', () => {
+  it('avoids flexbox and grid, which Outlook ignores', () => {
     expect(html).not.toMatch(/display:\s*(flex|grid)/)
   })
 
@@ -118,5 +94,67 @@ describe('email-client safety', () => {
 
   it('leaves no unreplaced template placeholders', () => {
     expect(html).not.toMatch(/\{\{|\}\}|\$\{/)
+  })
+
+  it('says the call is free and unpressured', () => {
+    expect(html.toLowerCase()).toMatch(/no cost|no obligation|nothing to sign/)
+  })
+})
+
+describe('variant B — time-of-day buttons', () => {
+  const html = render('B')
+
+  it('offers all three times of day', () => {
+    expect(html).toContain('A morning')
+    expect(html).toContain('An afternoon')
+    expect(html).toContain('An evening')
+  })
+
+  it('points every button at the booking link', () => {
+    expect(html.match(new RegExp(CAL.replace(/[?]/g, '\\?'), 'g'))?.length).toBeGreaterThanOrEqual(3)
+  })
+
+  it('keeps the callback offer below the ask, so it cannot pre-empt booking', () => {
+    expect(html.indexOf('When would suit you')).toBeLessThan(html.indexOf('Prefer us to call you'))
+  })
+
+  it('keeps the "email me" route', () => {
+    expect(html).toContain('mailto:reece@mypensionadvisor.co.uk')
+  })
+
+  it('degrades buttons to plain text without a URL', () => {
+    const h = render('B', { bookingUrl: '' })
+    expect(h).toContain('A morning')
+    expect(h).not.toContain('<a href=""')
+  })
+})
+
+describe('variant D — personal note', () => {
+  const html = render('D')
+
+  it('reads as a letter, with no buttons', () => {
+    expect(html).toContain('Here&rsquo;s my calendar')
+    expect(html).not.toMatch(/background:#2563eb/)
+  })
+
+  it('uses a serif face, which is what makes it feel typed', () => {
+    expect(html).toMatch(/font-family:Georgia/)
+  })
+
+  it('names the specific guide requested', () => {
+    expect(render('D', { guideTitle: 'Combining Your Pension Pots' }))
+      .toContain('Combining Your Pension Pots')
+  })
+
+  it('falls back to a generic guide name when none is passed', () => {
+    expect(html).toContain('your pension guide')
+  })
+
+  it('invites a plain reply as well as a booking', () => {
+    expect(html).toContain('reply to this email')
+  })
+
+  it('mentions evenings, which is the objection it answers', () => {
+    expect(html).toContain('including evenings')
   })
 })

@@ -54,8 +54,23 @@ interface Props {
   onGoParked: () => void
 }
 
+type VariantStat = {
+  variant: 'B' | 'D'
+  sent: number
+  clicked: number
+  booked_after_click: number
+  booked_any_source: number
+  click_pct: number | null
+}
+
+const VARIANT_LABEL: Record<string, string> = {
+  B: 'B · time-of-day buttons',
+  D: 'D · personal note',
+}
+
 export default function AdminBoard({ onNotif, onOpenLead, onGoParked }: Props) {
   const [rows, setRows] = useState<BoardRow[]>([])
+  const [stats, setStats] = useState<VariantStat[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<Filter>('open')
   const [campaign, setCampaign] = useState('')
@@ -93,6 +108,9 @@ export default function AdminBoard({ onNotif, onOpenLead, onGoParked }: Props) {
         last_outcome: lastByLead.get(l.id) ?? null,
       }
     }))
+    const { data: vs } = await supabase.from('email_variant_stats').select('*')
+    setStats((vs ?? []) as VariantStat[])
+
     setLoading(false)
   }, [])
 
@@ -242,6 +260,33 @@ export default function AdminBoard({ onNotif, onOpenLead, onGoParked }: Props) {
           <div className="cd-stat" style={{ ['--c' as string]: '#9699a6' }}><b>{g.cold.length}</b><span>Cold</span></div>
           <div className="cd-stat" style={{ ['--c' as string]: '#5a5ce0' }}><b>{pipeline}</b><span>Live pipeline</span></div>
         </div>
+
+        {stats.length > 0 && (
+          <div className="ab-ab">
+            <div className="ab-ab-h">
+              📧 Guide email A/B test
+              <span>clicks are tracked; a booking only counts if the lead clicked the email first</span>
+            </div>
+            <div className="ab-ab-g">
+              {stats.map(s => {
+                const total = stats.reduce((a, x) => a + x.sent, 0)
+                const leading = stats.length > 1 &&
+                  s.clicked / Math.max(s.sent, 1) === Math.max(...stats.map(x => x.clicked / Math.max(x.sent, 1))) &&
+                  s.clicked > 0
+                return (
+                  <div key={s.variant} className={'ab-ab-c' + (leading ? ' win' : '')}>
+                    <div className="ab-ab-n">{VARIANT_LABEL[s.variant] ?? s.variant}{leading && <em>ahead</em>}</div>
+                    <div className="ab-ab-r"><span>Sent</span><b>{s.sent}</b></div>
+                    <div className="ab-ab-r"><span>Clicked the link</span><b>{s.clicked} ({s.click_pct ?? 0}%)</b></div>
+                    <div className="ab-ab-r"><span>Booked from the email</span><b>{s.booked_after_click}</b></div>
+                    <div className="ab-ab-r sub"><span>Booked any source</span><b>{s.booked_any_source}</b></div>
+                    {total < 40 && <div className="ab-ab-warn">Too early to call — needs ~20 per arm</div>}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         {loading ? <div className="empty">Loading…</div>
           : pool.length === 0 ? <div className="empty">No leads match those filters.</div>

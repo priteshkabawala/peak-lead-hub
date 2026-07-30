@@ -46,75 +46,126 @@ const SENDER = {
   address: process.env.LEAD_EMAIL_ADDRESS || 'First Floor, 85 Great Portland St, London W1W 7LT',
 }
 
+export type EmailVariant = 'B' | 'D'
+
 /**
- * The free-guide email sent to the prospect. Copy supplied by Pritesh.
- *
- * Written with inline styles and no flexbox/grid: Outlook and older clients
- * ignore modern layout, so this stays as plain stacked blocks.
- *
- * Exported so it can be previewed and unit-tested without sending anything.
+ * Which variant a lead receives. Lead id parity rather than random, so the
+ * split stays even and a given lead always maps to the same variant — a resend
+ * can never show one person two different emails.
  */
-export function guideEmailHtml(opts: { firstName: string | null; bookingUrl: string }): string {
-  const greeting = opts.firstName?.trim() ? `Hi ${opts.firstName.trim()},` : 'Hi.'
-  const li = 'font-size:14px;line-height:1.55;margin:0 0 7px'
-  const p = 'font-size:14px;line-height:1.6;margin:0 0 15px'
-  const ask = 'font-size:14px;line-height:1.6;margin:0 0 10px;font-weight:600'
+export function variantForLead(leadId: number): EmailVariant {
+  return leadId % 2 === 0 ? 'B' : 'D'
+}
 
-  // Only linked when a scheduling URL is configured; a dead "click here" is
-  // worse than plain text.
-  const clickHere = opts.bookingUrl
-    ? `<a href="${opts.bookingUrl}" style="color:#1d4ed8;font-weight:600">click here</a>`
-    : 'click here'
-
-  return `
-  <div style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;max-width:560px;margin:0 auto;padding:32px 28px;background:#fff;color:#0f172a;border:1px solid #e3e8f0;border-radius:12px">
-    <h2 style="margin:0 0 22px;font-size:21px">Your free guide is here 📘</h2>
-
-    <p style="${p}">${greeting} Thank you for requesting our Guide!</p>
-
-    <p style="${p}">
-      Our representative may contact you shortly to enquire if you have any questions regarding
-      the Pension Guide. This call presents an excellent opportunity for you to discover how we
-      can assist in addressing your financial needs in:
-    </p>
-
-    <ul style="margin:0 0 15px;padding-left:22px;color:#0f172a">
-      <li style="${li}">Pension planning, including investing and estate planning.</li>
-      <li style="${li}">Finding an adviser who puts you first.</li>
-      <li style="${li}">Aligning your investments and retirement goals.</li>
-    </ul>
-
-    <p style="${ask}">Are you prepared to discover how we can assist you in achieving a comfortable retirement?</p>
-
-    <p style="${p}">
-      <a href="mailto:${SENDER.email}" style="color:#1d4ed8;font-weight:600">Email me</a>
-      or ${clickHere} to schedule an in-depth meeting with your qualified professional.
-      We&rsquo;ll help you answer important questions such as:
-    </p>
-
-    <ul style="margin:0 0 20px;padding-left:22px;color:#0f172a">
-      <li style="${li}">Is your portfolio positioned to meet your goals?</li>
-      <li style="${li}">Will you have enough throughout retirement?</li>
-      <li style="${li}">How can you generate income to maintain your lifestyle?</li>
-    </ul>
-
-    ${opts.bookingUrl ? `
-    <p style="margin:0 0 24px">
-      <a href="${opts.bookingUrl}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;font-weight:700;font-size:15px;padding:13px 26px;border-radius:8px">Book your meeting →</a>
-    </p>` : ''}
-
-    <p style="${p};margin-bottom:4px">Kind Regards</p>
+const sigHtml = () => `
+    <p style="font-size:14px;line-height:1.6;margin:0 0 4px">Kind Regards</p>
     <p style="font-size:15px;font-weight:700;margin:0 0 12px">${SENDER.name}</p>
-
     <p style="font-size:13px;line-height:1.7;color:#334155;margin:0">
       Landline ${SENDER.landline}<br>
       WhatsApp ${SENDER.whatsapp}<br>
       ${SENDER.address}
     </p>
-
     <p style="font-size:12px;color:#94a3b8;margin:22px 0 0;border-top:1px solid #e3e8f0;padding-top:14px">
       mypensionadvisor.co.uk
+    </p>`
+
+/**
+ * The free-guide email sent to the prospect.
+ *
+ * Two variants are under test:
+ *   B — three time-of-day buttons. Turns "do I want a call?" into "when?".
+ *   D — a plain personal note from Reece, no buttons. Reads like a person and
+ *       is likelier to land in Gmail's Primary tab.
+ *
+ * Inline styles only, no flexbox/grid: Outlook ignores modern layout.
+ * Exported so it can be previewed and unit-tested without sending anything.
+ */
+export function guideEmailHtml(opts: {
+  firstName: string | null
+  bookingUrl: string
+  variant?: EmailVariant
+  guideTitle?: string
+}): string {
+  const name = opts.firstName?.trim()
+  const variant = opts.variant ?? 'B'
+  const guide = opts.guideTitle ?? 'your pension guide'
+  const url = opts.bookingUrl
+
+  if (variant === 'D') {
+    const greeting = name ? `Hi ${name},` : 'Hi,'
+    // No booking link configured: fall back to inviting a reply, never a dead link.
+    const calLine = url
+      ? `<a href="${url}" style="color:#1d4ed8;font-weight:700">Here&rsquo;s my calendar</a> &mdash; pick anything that suits, including evenings. Or just reply to this email and tell me what you&rsquo;re wondering about.`
+      : `Just reply to this email and tell me what you&rsquo;re wondering about, and we&rsquo;ll find a time that suits.`
+
+    return `
+  <div style="font-family:Georgia,'Times New Roman',serif;max-width:560px;margin:0 auto;padding:32px 28px;background:#fff;color:#0f172a;border:1px solid #e3e8f0;border-radius:12px">
+    <p style="font-size:15px;line-height:1.7;margin:0 0 14px">${greeting}</p>
+    <p style="font-size:15px;line-height:1.7;margin:0 0 14px">Thanks for requesting ${guide} &mdash; it&rsquo;s attached to this email as a PDF.</p>
+    <p style="font-size:15px;line-height:1.7;margin:0 0 14px">
+      I&rsquo;d rather not just send you a document and leave it there. If it raises any questions about your own
+      pension, I&rsquo;m happy to go through them with you on a short call. There&rsquo;s no cost and nothing to sign.
     </p>
+    <p style="font-size:15px;line-height:1.7;margin:0 0 14px">${calLine}</p>
+    <p style="font-size:15px;line-height:1.7;margin:0 0 14px">Either way, I hope the guide is useful.</p>
+    <p style="font-size:15px;line-height:1.7;margin:0 0 4px">Kind regards,</p>
+    <p style="font-size:15px;font-weight:700;margin:0 0 10px">${SENDER.name}</p>
+    <p style="font-family:system-ui,sans-serif;font-size:13px;line-height:1.7;color:#334155;margin:0">
+      My Pension Advisor<br>
+      Landline ${SENDER.landline} &middot; WhatsApp ${SENDER.whatsapp}
+    </p>
+    <p style="font-family:system-ui,sans-serif;font-size:12px;color:#94a3b8;margin:20px 0 0">mypensionadvisor.co.uk</p>
+  </div>`
+  }
+
+  // ── Variant B ──────────────────────────────────────────────────────────────
+  const greeting = name ? `Hi ${name}, thank you for requesting our Guide!` : 'Thank you for requesting our Guide!'
+  const btn = (label: string, primary: boolean) => url
+    ? `<a href="${url}" style="display:block;${primary
+        ? 'background:#2563eb;color:#fff;border:1.5px solid #2563eb;'
+        : 'background:#fff;color:#1d4ed8;border:1.5px solid #2563eb;'}
+        text-decoration:none;font-weight:700;font-size:15px;padding:14px;border-radius:9px;text-align:center;margin:0 0 8px">${label}</a>`
+    : `<p style="font-size:14px;margin:0 0 8px;color:#334155">${label}</p>`
+
+  return `
+  <div style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;max-width:560px;margin:0 auto;padding:32px 28px;background:#fff;color:#0f172a;border:1px solid #e3e8f0;border-radius:12px">
+    <h2 style="margin:0 0 6px;font-size:21px">Your free guide is here 📘</h2>
+    <p style="font-size:12.5px;color:#64748b;margin:0 0 20px">📎 Attached as a PDF</p>
+
+    <p style="font-size:15px;line-height:1.6;margin:0 0 16px">${greeting}</p>
+
+    <p style="font-size:15px;line-height:1.6;margin:0 0 12px;font-weight:600">
+      When would suit you for a short chat with an adviser?
+    </p>
+    ${btn('☀️ A morning', false)}
+    ${btn('🕑 An afternoon', false)}
+    ${btn('🌙 An evening', true)}
+    <p style="font-size:12.5px;color:#64748b;margin:8px 0 22px;text-align:center">No cost, no obligation</p>
+
+    <p style="font-size:14px;line-height:1.6;margin:0 0 15px;color:#334155">
+      Prefer us to call you? Our representative may contact you shortly to see if you have any questions about the Guide.
+    </p>
+
+    <p style="font-size:14px;line-height:1.6;margin:0 0 10px;font-weight:600">On the call we can help you with:</p>
+    <ul style="margin:0 0 18px;padding-left:22px">
+      <li style="font-size:14px;line-height:1.55;margin:0 0 7px">Pension planning, including investing and estate planning</li>
+      <li style="font-size:14px;line-height:1.55;margin:0 0 7px">Finding an adviser who puts you first</li>
+      <li style="font-size:14px;line-height:1.55;margin:0 0 7px">Aligning your investments and retirement goals</li>
+    </ul>
+
+    <div style="background:#f8fafc;border-left:3px solid #2563eb;border-radius:0 8px 8px 0;padding:14px 16px;margin:0 0 20px">
+      <p style="font-size:13.5px;font-weight:700;margin:0 0 8px">We&rsquo;ll help you answer:</p>
+      <ul style="margin:0;padding-left:20px">
+        <li style="font-size:13.5px;line-height:1.55;margin:0 0 5px">Is your portfolio positioned to meet your goals?</li>
+        <li style="font-size:13.5px;line-height:1.55;margin:0 0 5px">Will you have enough throughout retirement?</li>
+        <li style="font-size:13.5px;line-height:1.55;margin:0">How can you generate income to maintain your lifestyle?</li>
+      </ul>
+    </div>
+
+    <p style="font-size:12.5px;color:#64748b;margin:0 0 22px">
+      Or <a href="mailto:${SENDER.email}" style="color:#1d4ed8;font-weight:600">email me</a> directly.
+    </p>
+${sigHtml()}
   </div>`
 }
 
@@ -151,9 +202,11 @@ export async function runLeadAutomation(leadId: number | string) {
   const fullName = `${lead.first_name ?? ''} ${lead.last_name ?? ''}`.trim() || 'New lead'
   const leadLink = `${env.appUrl}/crm?lead=${lead.id}`
   const guide = guideForCampaign(lead.campaign)
+  const variant = variantForLead(lead.id)
   const summary = {
     ok: true, leadId: lead.id, guideEmailed: false, phoneValid: false,
     phoneReason: null as string | null, firstCallDue: null as string | null,
+    emailVariant: null as EmailVariant | null,
     whatsapp: 'skipped' as string, adminAlerted: false, callersNotified: 0, adminsNotified: 0,
   }
 
@@ -174,11 +227,21 @@ export async function runLeadAutomation(leadId: number | string) {
         attachments: [{ filename: guide.file, path: `${env.appUrl}/guides/${guide.file}` }],
         html: guideEmailHtml({
           firstName: lead.first_name ?? null,
-          bookingUrl: process.env.NEXT_PUBLIC_CALENDLY_URL || '',
+          // Tracked redirect, so a booking can be credited to the email rather
+          // than to the caller's phone call. Falls back to nothing when Calendly
+          // is unconfigured, which each variant degrades around.
+          bookingUrl: process.env.NEXT_PUBLIC_CALENDLY_URL
+            ? `${env.appUrl}/api/e/book?l=${lead.id}`
+            : '',
+          variant,
+          guideTitle: guide.title,
         }),
       })
       summary.guideEmailed = true
-      await supabaseAdmin.from('leads').update({ guide_sent_at: new Date().toISOString() }).eq('id', lead.id)
+      summary.emailVariant = variant
+      await supabaseAdmin.from('leads')
+        .update({ guide_sent_at: new Date().toISOString(), email_variant: variant })
+        .eq('id', lead.id)
     } catch { /* best-effort */ }
   }
 
