@@ -97,7 +97,7 @@ export async function GET(req: Request) {
   if (wabaId) {
     try {
       const res = await fetch(
-        `${GRAPH}/${wabaId}/phone_numbers?fields=id,display_phone_number,verified_name,code_verification_status,platform_type,status,quality_rating`,
+        `${GRAPH}/${wabaId}/phone_numbers?fields=id,display_phone_number,verified_name,code_verification_status,platform_type,status,quality_rating,name_status,new_name_status,account_mode,is_pin_enabled,is_official_business_account`,
         { headers: { Authorization: `Bearer ${token}` } })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) {
@@ -112,6 +112,13 @@ export async function GET(req: Request) {
           verification: n.code_verification_status,
           platform: n.platform_type,
           status: n.status,
+          // A display name still under review, or a PIN already enabled from a
+          // previous registration, both cause Meta's generic "Registration
+          // failed" with no further explanation.
+          nameStatus: n.name_status,
+          newNameStatus: n.new_name_status,
+          pinAlreadyEnabled: n.is_pin_enabled,
+          accountMode: n.account_mode,
           isCurrentlyConfigured: n.id === phoneNumberId,
         }))
         const live = nums.find(n => String(n.display_phone_number ?? '').replace(/\D/g, '').endsWith('7877651518'))
@@ -126,12 +133,46 @@ export async function GET(req: Request) {
             problems.push(`The UK number exists with Phone Number ID ${live.id}, but WHATSAPP_META_PHONE_NUMBER_ID is still ${phoneNumberId}. Swap it and redeploy.`)
           }
           if (live.platform_type !== 'CLOUD_API') {
-            problems.push(`UK number is not registered for Cloud API yet (platform: ${live.platform_type ?? 'none'}). Use Register in WhatsApp Manager and set a 6-digit two-step PIN.`)
+            problems.push(`UK number is not registered for Cloud API yet (platform: ${live.platform_type ?? 'none'}).`)
+          }
+          // Narrow down Meta's unhelpful "Registration failed. Please try again".
+          if (live.name_status && live.name_status !== 'APPROVED') {
+            problems.push(`Display name status is ${live.name_status} — registration fails while the name is not APPROVED.`)
+          }
+          if (live.new_name_status && !['NONE', 'APPROVED'].includes(String(live.new_name_status))) {
+            problems.push(`A display name change is ${live.new_name_status} — wait for it to clear before registering.`)
+          }
+          if (live.is_pin_enabled) {
+            problems.push('This number already has a two-step PIN from a previous registration. Registration needs THAT PIN, not a new one — reset it in WhatsApp Manager if it is lost.')
           }
         } else {
           problems.push('No number ending 7877651518 found on this WABA — add and verify it first.')
         }
       }
+
+      // WABA-level review state — an unreviewed account cannot register.
+      try {
+        const wres = await fetch(
+          `${GRAPH}/${wabaId}?fields=name,account_review_status,business_verification_status,country,ownership_type`,
+          { headers: { Authorization: `Bearer ${token}` } })
+        const wj = await wres.json().catch(() => ({}))
+        if (wres.ok) {
+          report.waba = {
+            name: wj.name,
+            accountReview: wj.account_review_status,
+            businessVerification: wj.business_verification_status,
+            country: wj.country,
+          }
+          if (wj.account_review_status && wj.account_review_status !== 'APPROVED') {
+            problems.push(`WABA account review status is ${wj.account_review_status} — Meta blocks registration until this is APPROVED.`)
+          }
+          if (wj.business_verification_status && wj.business_verification_status !== 'verified') {
+            problems.push(`Business verification is "${wj.business_verification_status}". Unverified businesses are capped at 250 recipients per day, and some registrations are blocked outright.`)
+          }
+        } else {
+          report.waba = { error: wj?.error?.message, code: wj?.error?.code }
+        }
+      } catch { /* non-fatal */ }
     } catch (e) {
       problems.push(`Number listing failed: ${(e as Error).message}`)
     }
