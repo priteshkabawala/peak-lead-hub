@@ -120,12 +120,22 @@ export function guideEmailHtml(opts: {
 
   // ── Variant B ──────────────────────────────────────────────────────────────
   const greeting = name ? `Hi ${name}, thank you for requesting our Guide!` : 'Thank you for requesting our Guide!'
-  const btn = (label: string, primary: boolean) => url
-    ? `<a href="${url}" style="display:block;${primary
-        ? 'background:#2563eb;color:#fff;border:1.5px solid #2563eb;'
-        : 'background:#fff;color:#1d4ed8;border:1.5px solid #2563eb;'}
-        text-decoration:none;font-weight:700;font-size:15px;padding:14px;border-radius:9px;text-align:center;margin:0 0 8px">${label}</a>`
-    : `<p style="font-size:14px;margin:0 0 8px;color:#334155">${label}</p>`
+  // Three compact buttons side by side. Laid out with a presentational table
+  // rather than inline-block or flex, because that is the only arrangement
+  // Outlook renders reliably.
+  const cell = (label: string, primary: boolean) => {
+    const inner = url
+      ? `<a href="${url}" style="display:block;${primary
+          ? 'background:#2563eb;color:#fff;border:1px solid #2563eb;'
+          : 'background:#fff;color:#1d4ed8;border:1px solid #c7d7f5;'}
+          text-decoration:none;font-weight:700;font-size:13px;padding:9px 4px;border-radius:7px;text-align:center">${label}</a>`
+      : `<span style="font-size:13px;color:#334155">${label}</span>`
+    return `<td width="33%" style="padding:0 3px" align="center">${inner}</td>`
+  }
+  const buttons = `
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 6px">
+      <tr>${cell('☀️ Morning', false)}${cell('🕑 Afternoon', false)}${cell('🌙 Evening', true)}</tr>
+    </table>`
 
   return `
   <div style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;max-width:560px;margin:0 auto;padding:32px 28px;background:#fff;color:#0f172a;border:1px solid #e3e8f0;border-radius:12px">
@@ -137,9 +147,7 @@ export function guideEmailHtml(opts: {
     <p style="font-size:15px;line-height:1.6;margin:0 0 12px;font-weight:600">
       When would suit you for a short chat with an adviser?
     </p>
-    ${btn('☀️ A morning', false)}
-    ${btn('🕑 An afternoon', false)}
-    ${btn('🌙 An evening', true)}
+    ${buttons}
     <p style="font-size:12.5px;color:#64748b;margin:8px 0 22px;text-align:center">No cost, no obligation</p>
 
     <p style="font-size:14px;line-height:1.6;margin:0 0 15px;color:#334155">

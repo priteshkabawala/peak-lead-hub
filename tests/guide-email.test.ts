@@ -105,9 +105,9 @@ describe('variant B — time-of-day buttons', () => {
   const html = render('B')
 
   it('offers all three times of day', () => {
-    expect(html).toContain('A morning')
-    expect(html).toContain('An afternoon')
-    expect(html).toContain('An evening')
+    expect(html).toContain('Morning')
+    expect(html).toContain('Afternoon')
+    expect(html).toContain('Evening')
   })
 
   it('points every button at the booking link', () => {
@@ -124,7 +124,7 @@ describe('variant B — time-of-day buttons', () => {
 
   it('degrades buttons to plain text without a URL', () => {
     const h = render('B', { bookingUrl: '' })
-    expect(h).toContain('A morning')
+    expect(h).toContain('Morning')
     expect(h).not.toContain('<a href=""')
   })
 })
