@@ -3,6 +3,7 @@ import { Resend } from 'resend'
 import { sendWhatsApp } from './whatsapp'
 import { verifyPhone } from './phone'
 import { openInitialSchedule } from './schedule'
+import { unsubscribeUrl } from './unsubscribe'
 
 const FROM_BRAND = 'PeaK Lead Hub <noreply@mypensionadvisor.co.uk>'
 // Prospect-facing sender. This is the name that shows in the lead's inbox, so
@@ -57,6 +58,19 @@ export function variantForLead(leadId: number): EmailVariant {
   return leadId % 2 === 0 ? 'B' : 'D'
 }
 
+// Regulatory footer. Wording supplied by Pritesh; do not paraphrase it.
+const footerHtml = (unsubUrl: string) => `
+    <p style="font-size:11.5px;line-height:1.6;color:#94a3b8;margin:20px 0 0;border-top:1px solid #e3e8f0;padding-top:14px">
+      <strong style="color:#64748b">Important Information:</strong> All of our financial advisers are authorised and
+      regulated by the Financial Conduct Authority (FCA).
+      <br><br>
+      If you no longer wish to receive these communications, please
+      ${unsubUrl ? `<a href="${unsubUrl}" style="color:#94a3b8;text-decoration:underline">click here</a>` : 'reply to this email'}
+      to unsubscribe.
+      <br><br>
+      mypensionadvisor.co.uk
+    </p>`
+
 const sigHtml = () => `
     <p style="font-size:14px;line-height:1.6;margin:0 0 4px">Kind Regards</p>
     <p style="font-size:15px;font-weight:700;margin:0 0 12px">${SENDER.name}</p>
@@ -65,9 +79,7 @@ const sigHtml = () => `
       WhatsApp ${SENDER.whatsapp}<br>
       ${SENDER.address}
     </p>
-    <p style="font-size:12px;color:#94a3b8;margin:22px 0 0;border-top:1px solid #e3e8f0;padding-top:14px">
-      mypensionadvisor.co.uk
-    </p>`
+`
 
 /**
  * The free-guide email sent to the prospect.
@@ -85,11 +97,13 @@ export function guideEmailHtml(opts: {
   bookingUrl: string
   variant?: EmailVariant
   guideTitle?: string
+  unsubscribeUrl?: string
 }): string {
   const name = opts.firstName?.trim()
   const variant = opts.variant ?? 'B'
   const guide = opts.guideTitle ?? 'your pension guide'
   const url = opts.bookingUrl
+  const unsub = opts.unsubscribeUrl ?? ''
 
   if (variant === 'D') {
     const greeting = name ? `Hi ${name},` : 'Hi,'
@@ -114,7 +128,7 @@ export function guideEmailHtml(opts: {
       My Pension Advisor<br>
       Landline ${SENDER.landline} &middot; WhatsApp ${SENDER.whatsapp}
     </p>
-    <p style="font-family:system-ui,sans-serif;font-size:12px;color:#94a3b8;margin:20px 0 0">mypensionadvisor.co.uk</p>
+    <div style="font-family:system-ui,sans-serif">${footerHtml(unsub)}</div>
   </div>`
   }
 
@@ -174,6 +188,7 @@ export function guideEmailHtml(opts: {
       Our pension specialist will contact you shortly to see if you have any questions about the Guide.
     </p>
 ${sigHtml()}
+${footerHtml(unsub)}
   </div>`
 }
 
@@ -215,6 +230,7 @@ export async function runLeadAutomation(leadId: number | string) {
     ok: true, leadId: lead.id, guideEmailed: false, phoneValid: false,
     phoneReason: null as string | null, firstCallDue: null as string | null,
     emailVariant: null as EmailVariant | null,
+    suppressed: null as string | null,
     whatsapp: 'skipped' as string, adminAlerted: false, callersNotified: 0, adminsNotified: 0,
   }
 
@@ -224,8 +240,11 @@ export async function runLeadAutomation(leadId: number | string) {
   const adminEmails = (team ?? []).filter(t => t.role === 'admin').map(t => t.email).filter(Boolean)
   const callerEmails = (team ?? []).filter(t => t.role === 'caller').map(t => t.email).filter(Boolean)
 
-  // 1 ─ Free-guide email to the lead
-  if (lead.email) {
+  // 1 ─ Free-guide email to the lead. Never email someone who has opted out.
+  const unsubUrl = unsubscribeUrl(env.appUrl, lead.id)
+  if (lead.unsubscribed_at) {
+    summary.suppressed = 'lead has unsubscribed'
+  } else if (lead.email) {
     try {
       await resend.emails.send({
         from: FROM_CLIENT,
@@ -233,6 +252,12 @@ export async function runLeadAutomation(leadId: number | string) {
         subject: `Your free guide: ${guide.title}`,
         replyTo: SENDER.email,
         attachments: [{ filename: guide.file, path: `${env.appUrl}/guides/${guide.file}` }],
+        // RFC 8058: lets Gmail and Outlook show their own unsubscribe control,
+        // which materially improves deliverability for bulk senders.
+        headers: unsubUrl ? {
+          'List-Unsubscribe': `<${unsubUrl}>, <mailto:${SENDER.email}?subject=unsubscribe>`,
+          'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+        } : undefined,
         html: guideEmailHtml({
           firstName: lead.first_name ?? null,
           // Tracked redirect, so a booking can be credited to the email rather
@@ -243,6 +268,7 @@ export async function runLeadAutomation(leadId: number | string) {
             : '',
           variant,
           guideTitle: guide.title,
+          unsubscribeUrl: unsubUrl,
         }),
       })
       summary.guideEmailed = true
