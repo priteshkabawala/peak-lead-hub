@@ -63,9 +63,11 @@ describe.each(VARIANTS)('variant %s — invariants', v => {
     expect(h).not.toMatch(/href="\s*"/)
   })
 
-  it('still offers a way to respond when there is no booking URL', () => {
+  // With no booking URL the prospect must still know what happens next —
+  // either they can reply, or we tell them we will call.
+  it('still tells the lead what happens next when there is no booking URL', () => {
     const h = render(v, { bookingUrl: '' })
-    expect(h.toLowerCase()).toMatch(/repl(y|ies)|email me/)
+    expect(h.toLowerCase()).toMatch(/repl(y|ies)|contact you/)
   })
 
   it('carries the signature', () => {
@@ -118,8 +120,8 @@ describe('variant B — time-of-day buttons', () => {
     expect(html.indexOf('When would suit you')).toBeLessThan(html.indexOf('Prefer us to call you'))
   })
 
-  it('keeps the "email me" route', () => {
-    expect(html).toContain('mailto:reece@mypensionadvisor.co.uk')
+  it('closes by telling the lead a specialist will call', () => {
+    expect(html).toContain('Our pension specialist will contact you shortly')
   })
 
   it('degrades buttons to plain text without a URL', () => {

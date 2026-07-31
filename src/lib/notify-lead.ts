@@ -171,7 +171,7 @@ export function guideEmailHtml(opts: {
     </div>
 
     <p style="font-size:12.5px;color:#64748b;margin:0 0 22px">
-      Or <a href="mailto:${SENDER.email}" style="color:#1d4ed8;font-weight:600">email me</a> directly.
+      Our pension specialist will contact you shortly to see if you have any questions about the Guide.
     </p>
 ${sigHtml()}
   </div>`
