@@ -1,0 +1,343 @@
+/* Elite Wealth Guide — design tokens and primitives.
+   Everything is scoped under `.pk-root` (or prefixed `pk-`) so it can never
+   collide with the CRM (globals.css) or the marketing site (site.css).
+   Theme is driven by `data-theme="dark|light"` on the same root element. */
+
+.pk-root {
+  /* Brand */
+  --pk-gold: #d4a341;
+  --pk-gold-soft: #f0c76a;
+  --pk-mint: #3ecf9a;
+  --pk-sky: #5aa9ff;
+  --pk-rose: #ff6b81;
+  --pk-amber: #f0a500;
+
+  /* Chart series — colour-blind-safe, ordered by prominence */
+  --pk-c1: #d4a341;
+  --pk-c2: #5aa9ff;
+  --pk-c3: #3ecf9a;
+  --pk-c4: #b088f9;
+  --pk-c5: #ff8f6b;
+
+  --pk-radius: 18px;
+  --pk-radius-sm: 12px;
+  --pk-ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-size: 16px;
+  line-height: 1.55;
+  color: var(--pk-text);
+  background: var(--pk-bg);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-variant-numeric: tabular-nums;
+}
+
+.pk-root[data-theme='dark'] {
+  --pk-bg: #070b14;
+  --pk-bg-2: #0b1120;
+  --pk-surface: rgba(255, 255, 255, 0.045);
+  --pk-surface-2: rgba(255, 255, 255, 0.075);
+  --pk-surface-solid: #111a2c;
+  --pk-line: rgba(255, 255, 255, 0.1);
+  --pk-line-strong: rgba(255, 255, 255, 0.2);
+  --pk-text: #eef2f8;
+  --pk-text-2: #b3c0d4;
+  --pk-muted: #7c8aa3;
+  --pk-inverse: #070b14;
+  --pk-glow: radial-gradient(120% 90% at 50% -10%, rgba(212, 163, 65, 0.16), transparent 62%),
+    radial-gradient(90% 70% at 85% 0%, rgba(90, 169, 255, 0.12), transparent 60%);
+  --pk-shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 12px 32px -12px rgba(0, 0, 0, 0.7);
+  --pk-ring: rgba(212, 163, 65, 0.45);
+  color-scheme: dark;
+}
+
+.pk-root[data-theme='light'] {
+  --pk-bg: #f7f5f1;
+  --pk-bg-2: #ffffff;
+  --pk-surface: rgba(255, 255, 255, 0.85);
+  --pk-surface-2: rgba(11, 24, 45, 0.04);
+  --pk-surface-solid: #ffffff;
+  --pk-line: rgba(11, 24, 45, 0.1);
+  --pk-line-strong: rgba(11, 24, 45, 0.2);
+  --pk-text: #0b182d;
+  --pk-text-2: #3d4d63;
+  --pk-muted: #6b7a8f;
+  --pk-inverse: #ffffff;
+  --pk-gold: #9a7118;
+  --pk-gold-soft: #b8892a;
+  --pk-mint: #0d8f5e;
+  --pk-sky: #2a72d4;
+  --pk-rose: #d43a54;
+  --pk-c1: #9a7118;
+  --pk-c2: #2a72d4;
+  --pk-c3: #0d8f5e;
+  --pk-c4: #7c4dd6;
+  --pk-c5: #d4622a;
+  --pk-glow: radial-gradient(120% 90% at 50% -10%, rgba(212, 163, 65, 0.18), transparent 60%),
+    radial-gradient(90% 70% at 85% 0%, rgba(90, 169, 255, 0.14), transparent 60%);
+  --pk-shadow: 0 1px 2px rgba(11, 24, 45, 0.05), 0 14px 34px -16px rgba(11, 24, 45, 0.28);
+  --pk-ring: rgba(154, 113, 24, 0.4);
+  color-scheme: light;
+}
+
+.pk-root * {
+  box-sizing: border-box;
+}
+
+.pk-root h1,
+.pk-root h2,
+.pk-root h3,
+.pk-root h4 {
+  color: var(--pk-text);
+  line-height: 1.12;
+  letter-spacing: -0.024em;
+  font-weight: 600;
+  text-wrap: balance;
+}
+
+.pk-root p {
+  text-wrap: pretty;
+}
+
+/* `:where()` keeps this at zero specificity for the element part, so the
+   `.pk-btn` / `.pk-option` classes below can still set their own background
+   and border. Tailwind preflight already clears button backgrounds. */
+.pk-root :where(button) {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.pk-root :focus-visible {
+  outline: 2px solid var(--pk-ring);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+/* Ambient light behind the whole experience */
+.pk-aurora {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: var(--pk-glow);
+  z-index: 0;
+}
+
+/* ── Surfaces ──────────────────────────────────────────────────────────── */
+
+.pk-card {
+  background: var(--pk-surface);
+  border: 1px solid var(--pk-line);
+  border-radius: var(--pk-radius);
+  box-shadow: var(--pk-shadow);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.pk-card-solid {
+  background: var(--pk-surface-solid);
+  border: 1px solid var(--pk-line);
+  border-radius: var(--pk-radius);
+  box-shadow: var(--pk-shadow);
+}
+
+/* Selectable option card — used by career stage, priorities, concerns, scenarios */
+.pk-option {
+  position: relative;
+  width: 100%;
+  text-align: left;
+  background: var(--pk-surface);
+  border: 1px solid var(--pk-line);
+  border-radius: var(--pk-radius);
+  padding: 18px;
+  transition: border-color 0.25s var(--pk-ease), background 0.25s var(--pk-ease),
+    transform 0.25s var(--pk-ease);
+}
+.pk-option:hover {
+  border-color: var(--pk-line-strong);
+  background: var(--pk-surface-2);
+}
+.pk-option[data-selected='true'] {
+  border-color: color-mix(in srgb, var(--pk-gold) 65%, transparent);
+  background: color-mix(in srgb, var(--pk-gold) 10%, var(--pk-surface));
+}
+.pk-option[data-selected='true']::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: var(--pk-radius);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--pk-gold) 45%, transparent),
+    0 0 28px -6px color-mix(in srgb, var(--pk-gold) 45%, transparent);
+  pointer-events: none;
+}
+
+/* ── Buttons ───────────────────────────────────────────────────────────── */
+
+.pk-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 13px 22px;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+  transition: transform 0.2s var(--pk-ease), opacity 0.2s var(--pk-ease),
+    background 0.2s var(--pk-ease), border-color 0.2s var(--pk-ease);
+  white-space: nowrap;
+}
+.pk-btn:active {
+  transform: scale(0.975);
+}
+.pk-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.pk-btn-primary {
+  background: linear-gradient(135deg, var(--pk-gold-soft), var(--pk-gold));
+  color: #1a1206;
+  box-shadow: 0 8px 24px -10px color-mix(in srgb, var(--pk-gold) 80%, transparent);
+}
+.pk-root[data-theme='light'] .pk-btn-primary {
+  color: #fff;
+}
+.pk-btn-primary:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+.pk-btn-ghost {
+  border: 1px solid var(--pk-line-strong);
+  color: var(--pk-text-2);
+}
+.pk-btn-ghost:hover:not(:disabled) {
+  color: var(--pk-text);
+  background: var(--pk-surface-2);
+}
+
+/* ── Sliders ───────────────────────────────────────────────────────────── */
+
+.pk-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 30px;
+  background: transparent;
+  cursor: grab;
+}
+.pk-slider:active {
+  cursor: grabbing;
+}
+.pk-slider::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--pk-gold) 0%,
+    var(--pk-gold) var(--pk-fill, 50%),
+    var(--pk-surface-2) var(--pk-fill, 50%),
+    var(--pk-surface-2) 100%
+  );
+  border: 1px solid var(--pk-line);
+}
+.pk-slider::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--pk-surface-2);
+  border: 1px solid var(--pk-line);
+}
+.pk-slider::-moz-range-progress {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--pk-gold);
+}
+.pk-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  margin-top: -9px;
+  border-radius: 50%;
+  background: var(--pk-bg-2);
+  border: 2px solid var(--pk-gold);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35), 0 0 0 6px color-mix(in srgb, var(--pk-gold) 14%, transparent);
+  transition: box-shadow 0.2s var(--pk-ease);
+}
+.pk-slider:hover::-webkit-slider-thumb {
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35), 0 0 0 10px color-mix(in srgb, var(--pk-gold) 18%, transparent);
+}
+.pk-slider::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--pk-bg-2);
+  border: 2px solid var(--pk-gold);
+}
+
+/* ── Misc primitives ───────────────────────────────────────────────────── */
+
+.pk-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--pk-line);
+  background: var(--pk-surface-2);
+  font-size: 12.5px;
+  font-weight: 550;
+  letter-spacing: 0.01em;
+  color: var(--pk-text-2);
+}
+
+.pk-eyebrow {
+  font-size: 11.5px;
+  font-weight: 650;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--pk-gold);
+}
+
+.pk-hairline {
+  height: 1px;
+  background: linear-gradient(to right, transparent, var(--pk-line-strong), transparent);
+}
+
+.pk-num {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+  font-weight: 600;
+}
+
+.pk-scroll-x {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.pk-scroll-x::-webkit-scrollbar {
+  display: none;
+}
+
+/* Recharts overrides so tooltips and axes inherit the theme */
+.pk-root .recharts-surface {
+  overflow: visible;
+}
+.pk-root .recharts-cartesian-axis-tick text {
+  fill: var(--pk-muted);
+  font-size: 11px;
+}
+.pk-root .recharts-default-tooltip {
+  background: var(--pk-surface-solid) !important;
+  border: 1px solid var(--pk-line) !important;
+  border-radius: 12px !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pk-root *,
+  .pk-root *::before,
+  .pk-root *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

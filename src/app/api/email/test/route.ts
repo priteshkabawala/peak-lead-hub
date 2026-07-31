@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
 import { guideEmailHtml, type EmailVariant } from '@/lib/notify-lead'
+import { unsubscribeUrl } from '@/lib/unsubscribe'
 
 export const runtime = 'nodejs'
 export const maxDuration = 30
@@ -40,6 +41,10 @@ export async function POST(req: Request) {
   }
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://crm.mypensionadvisor.co.uk'
+  // Sign against a real lead when one is named, so the footer link in the test
+  // email behaves exactly as it will for that prospect.
+  const unsubLeadId = Number(body.leadId) > 0 ? Number(body.leadId) : 0
+  const unsubUrl = unsubscribeUrl(appUrl, unsubLeadId)
   const guide = { file: 'combine-your-pensions.pdf', title: 'Combining Your Pension Pots' }
 
   const resend = new Resend(resendKey)
@@ -55,6 +60,7 @@ export async function POST(req: Request) {
       bookingUrl: process.env.NEXT_PUBLIC_CALENDLY_URL ? `${appUrl}/api/e/book?l=0` : '',
       variant,
       guideTitle: guide.title,
+      unsubscribeUrl: unsubUrl,
     }),
   })
 
@@ -66,5 +72,5 @@ export async function POST(req: Request) {
     details: { to, variant },
   }])
 
-  return NextResponse.json({ ok: true, id: data?.id, to, variant, attached: guide.file })
+  return NextResponse.json({ ok: true, id: data?.id, to, variant, attached: guide.file, unsubscribeUrl: unsubUrl })
 }

@@ -21,7 +21,11 @@
   --shadow-lg: 0 4px 12px rgba(15,23,42,.08), 0 2px 4px rgba(15,23,42,.04);
 }
 
-* { box-sizing: border-box; margin: 0; padding: 0; }
+/* This reset is unlayered, so it outranks Tailwind's layered utilities — any
+   `m-*`/`p-*` class would be silently ignored. The `:not()` carves out the
+   Elite guide (`.pk-root`), which is built on Tailwind spacing utilities and
+   relies on preflight for its reset instead. */
+*:not(.pk-root, .pk-root *) { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
   font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
