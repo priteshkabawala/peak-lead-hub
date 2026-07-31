@@ -136,8 +136,10 @@ export async function GET(req: Request) {
             problems.push(`UK number is not registered for Cloud API yet (platform: ${live.platform_type ?? 'none'}).`)
           }
           // Narrow down Meta's unhelpful "Registration failed. Please try again".
-          if (live.name_status && live.name_status !== 'APPROVED') {
-            problems.push(`Display name status is ${live.name_status} — registration fails while the name is not APPROVED.`)
+          // AVAILABLE_WITHOUT_REVIEW means the name needs no approval at all,
+          // so it is a pass. Only a name actually pending or declined blocks.
+          if (live.name_status && !['APPROVED', 'AVAILABLE_WITHOUT_REVIEW'].includes(String(live.name_status))) {
+            problems.push(`Display name status is ${live.name_status} — registration fails while the name is not approved.`)
           }
           if (live.new_name_status && !['NONE', 'APPROVED'].includes(String(live.new_name_status))) {
             problems.push(`A display name change is ${live.new_name_status} — wait for it to clear before registering.`)
